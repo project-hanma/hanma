@@ -1,13 +1,14 @@
 # ssg.py
 
 A minimal static site generator written in Python. Drop it into any directory,
-run it, and every Markdown file is converted to a self-contained HTML page
-in-place — no build output folder, no configuration file required.
+run it, and every Markdown file is converted to a self-contained HTML page —
+no configuration file required.
 
 ## Features
 
-- Converts `.md` / `.markdown` files to `.html` alongside the source file
-- Recurses into sub-directories automatically
+- Converts `.md` / `.markdown` files to `.html` — in-place by default, or into
+  a separate output directory with `--output`
+- Recurses into sub-directories automatically, mirroring the source tree
 - Defaults to `./site/` as the content root (falls back to current directory)
 - `index.md` becomes the homepage — labelled **Home** and pinned first in the nav
 - Cross-page navigation bar — all generated pages linked from every page
@@ -38,7 +39,7 @@ source .venv/bin/activate        # Linux / macOS
 .venv\Scripts\activate           # Windows
 
 # Install dependencies
-pip install markdown pygments
+pip install markdown pygments pymdown-extensions
 
 # When you are done
 deactivate
@@ -81,17 +82,43 @@ project/
 Running `./ssg.py` from the project root will automatically discover and
 process everything under `site/`, including sub-directories.
 
+### Separate output directory
+
+Use `--output` to write all generated HTML into a separate directory, keeping
+source files untouched. The source tree is mirrored exactly:
+
+```
+project/
+├── ssg.py
+├── site/
+│   ├── index.md
+│   ├── about.md
+│   └── posts/
+│       └── hello.md
+└── dist/               ← created by --output dist/
+    ├── index.html
+    ├── about.html
+    └── posts/
+        └── hello.html
+```
+
 ## Usage
 
 ```bash
-# Convert ./site/ (default — recommended)
+# Convert ./site/ in-place (default)
 ./ssg.py
+
+# Write output to a separate directory
+./ssg.py --output dist/
 
 # Generate and serve locally (recommended for development)
 ./ssg.py --name "My Blog" --serve
 
+# Generate into dist/ and serve from there
+./ssg.py --output dist/ --name "My Blog" --serve
+
 # Serve on a custom port
-./ssg.py --name "My Blog" --serve --port 9000
+./ssg.py --serve --port 9000
 
 # Convert a single file
 ./ssg.py site/post.md
@@ -101,6 +128,9 @@ process everything under `site/`, including sub-directories.
 
 # Preview what would be converted without writing anything
 ./ssg.py --dry-run
+
+# Show version
+./ssg.py --version
 ```
 
 > **Note:** The `--serve` flag is recommended for local development. Browsers
@@ -115,15 +145,17 @@ process everything under `site/`, including sub-directories.
 |---|---|---|
 | `path` | `./site/` | Markdown file or directory to convert |
 | `--name` | `Blog` | Site name displayed in the page header |
+| `--output DIR` | — | Directory to write generated HTML files (default: alongside source) |
 | `--dry-run` | — | List matched files without writing HTML |
 | `--serve` | — | Start a local HTTP server after generating |
 | `--port` | `8000` | Port for the local HTTP server |
+| `--version` | — | Print version and exit |
 
 ## Homepage
 
 If `site/index.md` exists it is treated as the homepage:
 
-- Converted to `site/index.html`
+- Converted to `index.html` (in-place or in `--output` dir)
 - Labelled **Home** in the navigation bar regardless of the H1 in the file
 - Always listed as the first navigation item
 - Opened automatically in the browser when using `--serve`

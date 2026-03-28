@@ -3,6 +3,8 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
+Version: 0.1.0
+
 Usage:
     python ssg.py [directory]
 
@@ -13,6 +15,8 @@ files written alongside the source .md file.
 Dependencies:
     pip install markdown pymdown-extensions
 """
+
+__version__ = "0.1.0"
 
 import os
 import sys
@@ -667,27 +671,27 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
     return ""
 
 
-def build_nav_html(md_path: Path, toc_inner: str,
-                   all_pages: list[tuple]) -> str:
+def build_nav_html(current_out_html: Path, toc_inner: str,
+                   nav_pages: list[tuple]) -> str:
     """Build the <ul> content for the sticky nav bar.
 
     Each page appears as a top-level item.  The current page is marked active
     and, if it has headings, shows a dropdown with its TOC.  Other pages link
     directly to their HTML file via a path relative to the current page.
+
+    nav_pages is a list of (out_html_path, title) tuples.
     """
-    if not all_pages:
+    if not nav_pages:
         return toc_inner  # single-file mode: just the TOC
 
-    current_html = md_path.with_suffix(".html")
     items = []
 
-    for page_path, page_title in all_pages:
-        page_html = page_path.with_suffix(".html")
-        is_current = page_html == current_html
+    for page_html, page_title in nav_pages:
+        is_current = page_html == current_out_html
 
         # Compute a relative URL from current page to target page
         try:
-            rel_url = os.path.relpath(page_html, current_html.parent)
+            rel_url = os.path.relpath(page_html, current_out_html.parent)
         except ValueError:
             rel_url = page_html.as_posix()  # different drive on Windows
 
@@ -717,12 +721,12 @@ def collect_page_info(md_path: Path) -> tuple[str, str]:
     return title, description
 
 
-def convert_md_to_html(md_path: Path, site_name: str,
-                       all_pages: list[tuple] | None = None) -> Path:
-    """Read a .md file and write its sibling .html file.
+def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
+                       nav_pages: list[tuple] | None = None) -> Path:
+    """Read a .md file and write the HTML output to out_path.
 
-    all_pages is a list of (Path, title) tuples for every page being generated,
-    used to build the cross-page navigation bar.
+    nav_pages is a list of (out_html_path, title) tuples for every page being
+    generated, used to build the cross-page navigation bar.
     """
     md_text = md_path.read_text(encoding="utf-8")
 
@@ -755,7 +759,7 @@ def convert_md_to_html(md_path: Path, site_name: str,
     else:
         toc_inner = re.sub(r'</?div[^>]*>', '', toc_html).strip()
 
-    nav_html = build_nav_html(md_path, toc_inner, all_pages or [])
+    nav_html = build_nav_html(out_path, toc_inner, nav_pages or [])
 
     now = datetime.now()
     date_str = now.strftime("%B %d, %Y")
@@ -777,7 +781,7 @@ def convert_md_to_html(md_path: Path, site_name: str,
         last_updated=last_updated,
     ).replace("{HIGHLIGHT_CSS}", HIGHLIGHT_CSS, 1)
 
-    out_path = md_path.with_suffix(".html")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     return out_path
 
@@ -811,16 +815,22 @@ def find_markdown_files(root: Path) -> list[Path]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert Markdown files to HTML in-place, recursively.",
+        description="Convert Markdown files to HTML, recursively.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./ssg.py                             # Process ./site/ (default)
-  ./ssg.py site/sample.md             # Convert a single file
-  ./ssg.py site/                       # Explicit site directory
-  ./ssg.py ~/my-blog                   # Any other directory
-  ./ssg.py --name "My Blog" --serve    # Named site with local server
+  ./ssg.py                                      # Process ./site/ (default, in-place)
+  ./ssg.py site/sample.md                       # Convert a single file
+  ./ssg.py site/                                # Explicit site directory (in-place)
+  ./ssg.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
+  ./ssg.py --name "My Blog" --serve             # Named site with local server
+  ./ssg.py --output dist/ --serve               # Serve from output directory
         """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"ssg.py {__version__}",
     )
     parser.add_argument(
         "path",
@@ -843,6 +853,12 @@ Examples:
         "--serve",
         action="store_true",
         help="Start a local HTTP server after generating (fixes localStorage across pages)",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        metavar="DIR",
+        help="Directory to write generated HTML files (default: alongside source files)",
     )
     parser.add_argument(
         "--port",
@@ -884,37 +900,46 @@ Examples:
 
     print(f"Found {len(files)} Markdown file(s)\n")
 
-    # ── Pass 1: collect titles for cross-page navigation ──────────────────
-    all_pages: list[tuple] = []
+    # ── Resolve output directory ───────────────────────────────────────────
+    output_dir = Path(args.output).resolve() if args.output else None
+
+    # ── Pass 1: collect titles and compute output paths ───────────────────
+    # all_files: list of (md_path, out_html_path, title)
+    all_files: list[tuple] = []
     for md_path in files:
         title, _ = collect_page_info(md_path)
         # index.md is always labelled "Home" in the nav
         if md_path.stem.lower() == "index":
             title = "Home"
-        all_pages.append((md_path, title))
+        if output_dir is not None:
+            rel = md_path.relative_to(root)
+            out_html = output_dir / rel.with_suffix(".html")
+        else:
+            out_html = md_path.with_suffix(".html")
+        all_files.append((md_path, out_html, title))
 
     # index.html always listed first, everything else in discovery order
-    all_pages.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
+    all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
 
     # Single-file invocations get no cross-page nav (nothing to link to)
-    nav_pages = all_pages if len(all_pages) > 1 else []
+    nav_pages = [(out_html, title) for _, out_html, title in all_files] if len(all_files) > 1 else []
 
     ok = 0
     errors = 0
 
     # ── Pass 2: generate HTML with full nav ───────────────────────────────
-    for md_path, _title in all_pages:
+    for md_path, out_html, _title in all_files:
         try:
             rel = md_path.relative_to(root)
         except ValueError:
             rel = md_path
 
         if args.dry_run:
-            print(f"  [dry-run] {rel}  →  {rel.with_suffix('.html')}")
+            print(f"  [dry-run] {rel}  →  {out_html}")
             continue
         try:
-            out = convert_md_to_html(md_path, args.name, all_pages=nav_pages)
-            print(f"  ✓  {rel}  →  {out.name}")
+            out = convert_md_to_html(md_path, out_html, args.name, nav_pages=nav_pages)
+            print(f"  ✓  {rel}  →  {out}")
             ok += 1
         except Exception as exc:
             print(f"  ✗  {rel}  →  ERROR: {exc}")
@@ -924,7 +949,7 @@ Examples:
         print(f"\nDone.  {ok} converted, {errors} errors.")
 
     if not args.dry_run and args.serve:
-        serve_dir = root
+        serve_dir = output_dir if output_dir is not None else root
         port = args.port
 
         # Find the first generated HTML file to open in the browser
@@ -932,8 +957,8 @@ Examples:
         index_html = serve_dir / "index.html"
         if index_html.is_file():
             open_url = f"http://localhost:{port}/index.html"
-        elif files:
-            first_html = files[0].with_suffix(".html")
+        elif all_files:
+            first_html = all_files[0][1]  # out_html from first entry
             rel_html = first_html.relative_to(serve_dir)
             open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
         else:
