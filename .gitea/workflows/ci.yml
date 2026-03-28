@@ -23,13 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Set up virtual environment and install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install markdown pygments pymdown-extensions pytest
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install --upgrade pip
+          .ci-venv/bin/pip install markdown pygments pymdown-extensions pytest
 
       - name: Check syntax (py_compile)
-        run: python3 -m py_compile ssg.py && echo "Syntax OK"
+        run: .ci-venv/bin/python -m py_compile ssg.py && echo "Syntax OK"
 
       - name: Run tests
-        run: python3 -m pytest tests/ -v --tb=short
+        run: .ci-venv/bin/python -m pytest tests/ -v --tb=short
