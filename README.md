@@ -184,6 +184,22 @@ echo "hello world"
 Pygments attempts to auto-detect the language if none is specified. For best
 results, always declare the language after the opening fence.
 
+## Testing
+
+A pytest suite lives in `tests/test_ssg.py` and covers syntax checking, file
+discovery, conversion, CLI flags, navigation, and edge cases.
+
+```bash
+# Install pytest into your virtual environment (one-time)
+pip install pytest
+
+# Run all tests
+python -m pytest tests/ -v
+```
+
+CI runs automatically via Gitea Actions on every push and pull request to
+`main`, testing against Python 3.10, 3.11, and 3.12.
+
 ## Customisation
 
 All visual styling lives inside the `HTML_TEMPLATE` string at the top of

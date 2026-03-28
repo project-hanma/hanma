@@ -41,7 +41,14 @@ pip install markdown pygments pymdown-extensions
 ./ssg.py --version
 ```
 
-There is no build step, test suite, or linter configured.
+There is no build step or linter configured. Tests are run with pytest:
+
+```bash
+pip install pytest   # one-time, into the same .venv
+python -m pytest tests/ -v
+```
+
+CI runs automatically via Gitea Actions (`.gitea/workflows/ci.yml`) on every push and pull request to `main`, across Python 3.10, 3.11, and 3.12. The `--serve` flag is excluded from tests as CI runs inside a container without a browser.
 
 ## Architecture
 
