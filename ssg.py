@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pymdown-extensions
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import os
 import sys
@@ -851,8 +851,11 @@ Examples:
     )
     parser.add_argument(
         "--serve",
-        action="store_true",
-        help="Start a local HTTP server after generating (fixes localStorage across pages)",
+        nargs="?",
+        const=8000,
+        type=int,
+        metavar="PORT",
+        help="Start a local HTTP server after generating, optionally on PORT (default: 8000)",
     )
     parser.add_argument(
         "--output",
@@ -948,9 +951,9 @@ Examples:
     if not args.dry_run:
         print(f"\nDone.  {ok} converted, {errors} errors.")
 
-    if not args.dry_run and args.serve:
+    if not args.dry_run and args.serve is not None:
         serve_dir = output_dir if output_dir is not None else root
-        port = args.port
+        port = args.serve if isinstance(args.serve, int) else args.port
 
         # Find the first generated HTML file to open in the browser
         # Prefer index.html as the landing page

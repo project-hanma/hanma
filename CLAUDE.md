@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal, zero-configuration static site generator that converts Markdown files to self-contained HTML pages. The entire implementation lives in a single file (`ssg.py`, ~980 lines) with no build system or config files.
 
-**Version:** 0.1.0 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.1.1 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pymdown-extensions`
 
@@ -23,8 +23,10 @@ pip install markdown pygments pymdown-extensions
 # Generate into a separate output directory
 ./ssg.py --output dist/
 
-# Generate with site name and serve locally
-./ssg.py --name "My Blog" --serve --port 8000
+# Generate with site name and serve locally (port inline or via --port)
+./ssg.py --name "My Blog" --serve
+./ssg.py --name "My Blog" --serve 9000
+./ssg.py --name "My Blog" --serve --port 9000
 
 # Generate into dist/ and serve from there
 ./ssg.py --output dist/ --name "My Blog" --serve

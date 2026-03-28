@@ -117,7 +117,8 @@ project/
 # Generate into dist/ and serve from there
 ./ssg.py --output dist/ --name "My Blog" --serve
 
-# Serve on a custom port
+# Serve on a custom port (two equivalent forms)
+./ssg.py --serve 9000
 ./ssg.py --serve --port 9000
 
 # Convert a single file
@@ -147,8 +148,8 @@ project/
 | `--name` | `Blog` | Site name displayed in the page header |
 | `--output DIR` | — | Directory to write generated HTML files (default: alongside source) |
 | `--dry-run` | — | List matched files without writing HTML |
-| `--serve` | — | Start a local HTTP server after generating |
-| `--port` | `8000` | Port for the local HTTP server |
+| `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
+| `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
 | `--version` | — | Print version and exit |
 
 ## Homepage
