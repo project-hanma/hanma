@@ -7,45 +7,10 @@ on:
     branches: ["main"]
 
 jobs:
-  test-centos:
-    name: Syntax & Tests (CentOS)
-    runs-on: ansible-dev-centos
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  test:
+    name: Syntax & Tests
+    runs-on: ubuntu-latest
 
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install markdown pygments pymdown-extensions pytest --break-system-packages
-
-      - name: Check syntax (py_compile)
-        run: python3 -m py_compile ssg.py && echo "Syntax OK"
-
-      - name: Run tests
-        run: python3 -m pytest tests/ -v --tb=short
-
-  test-fedora:
-    name: Syntax & Tests (Fedora)
-    runs-on: ansible-dev-fedora
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install markdown pygments pymdown-extensions pytest --break-system-packages
-
-      - name: Check syntax (py_compile)
-        run: python3 -m py_compile ssg.py && echo "Syntax OK"
-
-      - name: Run tests
-        run: python3 -m pytest tests/ -v --tb=short
-
-  test-debian:
-    name: Syntax & Tests (Debian)
-    runs-on: ansible-dev-debian
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -48,7 +48,7 @@ pip install pytest   # one-time, into the same .venv
 python -m pytest tests/ -v
 ```
 
-CI runs automatically via Gitea Actions (`.gitea/workflows/ci.yml`) on every push and pull request to `main`. Three independent jobs run concurrently on self-hosted Docker runners on a CentOS 9 host: `ansible-dev-centos`, `ansible-dev-fedora`, and `ansible-dev-debian`. The `--serve` flag is excluded from tests as CI runs inside a container without a browser.
+CI runs automatically via Gitea Actions (`.gitea/workflows/ci.yml`) on every push and pull request to `main`, using a single job on the `ubuntu-latest` runner label (mapped to a self-hosted Fedora Docker container). The `--serve` flag is excluded from tests as CI runs inside a container without a browser.
 
 ## Architecture
 
