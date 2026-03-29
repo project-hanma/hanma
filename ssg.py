@@ -526,7 +526,7 @@ Examples:
         "--output",
         default=None,
         metavar="DIR",
-        help="Directory to write generated HTML files (default: alongside source files)",
+        help="Directory to write generated HTML files (default: ./output/)",
     )
     parser.add_argument(
         "--port",
@@ -580,7 +580,10 @@ Examples:
     print(f"Found {len(files)} Markdown file(s)\n")
 
     # ── Resolve output directory ───────────────────────────────────────────
-    output_dir = Path(args.output).resolve() if args.output else None
+    if args.output:
+        output_dir = Path(args.output).resolve()
+    else:
+        output_dir = (Path(__file__).parent / "output").resolve()
 
     # ── Load theme ────────────────────────────────────────────────────────
     theme_template, theme_dir = load_theme(args.theme)
