@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.3.1
+Version: 0.3.2
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 import html
 import os
@@ -109,7 +109,7 @@ HIGHLIGHT_CSS = _build_highlight_css()
 # FRONT MATTER
 # ─────────────────────────────────────────────────────────────────────────────
 
-def parse_front_matter(md_text: str) -> tuple:
+def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tuple:
     """Strip and parse a YAML front matter block delimited by '---' lines.
 
     Returns (metadata_dict, body_text) where body_text has the front matter
@@ -133,6 +133,8 @@ def parse_front_matter(md_text: str) -> tuple:
             try:
                 meta = yaml.safe_load(yaml_block) or {}
             except yaml.YAMLError:
+                loc = f" in {source_path}" if source_path else ""
+                print(f"Warning: malformed YAML front matter{loc} — metadata ignored", file=sys.stderr)
                 meta = {}
             if not isinstance(meta, dict):
                 meta = {}
@@ -238,18 +240,20 @@ def build_nav_html(current_out_html: Path, toc_inner: str,
         except ValueError:
             rel_url = page_html.as_posix()  # different drive on Windows
 
+        safe_url = html.escape(rel_url, quote=True)
+        safe_title = html.escape(page_title)
         if is_current:
             # Active page — show TOC as dropdown if available
             dropdown = f"\n{toc_inner}" if toc_inner else ""
             items.append(
                 f'  <li class="nav-current">\n'
-                f'    <a href="{rel_url}" aria-current="page">{page_title}</a>'
+                f'    <a href="{safe_url}" aria-current="page">{safe_title}</a>'
                 f'{dropdown}\n  </li>'
             )
         else:
             items.append(
                 f'  <li>\n'
-                f'    <a href="{rel_url}">{page_title}</a>\n'
+                f'    <a href="{safe_url}">{safe_title}</a>\n'
                 f'  </li>'
             )
 
@@ -259,7 +263,7 @@ def build_nav_html(current_out_html: Path, toc_inner: str,
 def collect_page_info(md_path: Path) -> tuple:
     """Return (title, description, front_matter) for a Markdown file without full conversion."""
     md_text = md_path.read_text(encoding="utf-8")
-    front, body = parse_front_matter(md_text)
+    front, body = parse_front_matter(md_text, source_path=md_path)
     fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
     title = front.get("title") or extract_title(body, fallback)
     description = front.get("description") or extract_description(body)
@@ -279,7 +283,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     if template is None:
         template, _ = load_theme("default")
     md_text = md_path.read_text(encoding="utf-8")
-    front, body = parse_front_matter(md_text)
+    front, body = parse_front_matter(md_text, source_path=md_path)
 
     fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
     title = front.get("title") or extract_title(body, fallback)
@@ -303,10 +307,11 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             pass
 
     # Footer attribution line (author and/or date)
+    fm_author_esc = html.escape(fm_author)
     if fm_author and fm_date_str:
-        author_line = f"By <em>{fm_author}</em>, {fm_date_str} &nbsp;&middot;&nbsp; "
+        author_line = f"By <em>{fm_author_esc}</em>, {fm_date_str} &nbsp;&middot;&nbsp; "
     elif fm_author:
-        author_line = f"By <em>{fm_author}</em> &nbsp;&middot;&nbsp; "
+        author_line = f"By <em>{fm_author_esc}</em> &nbsp;&middot;&nbsp; "
     elif fm_date_str:
         author_line = f"{fm_date_str} &nbsp;&middot;&nbsp; "
     else:
@@ -361,12 +366,12 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     source_rel = md_path.name
 
     page_html = template.substitute(
-        title=title,
-        description=description,
+        title=html.escape(title),
+        description=html.escape(description),
         author_meta=author_meta,
         keywords_meta=keywords_meta,
         author_line=author_line,
-        site_name=site_name,
+        site_name=html.escape(site_name),
         date_str=date_str,
         content=content_html,
         nav=nav_html,
@@ -378,6 +383,35 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page_html, encoding="utf-8")
     return out_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STALE OUTPUT CLEANUP
+# ─────────────────────────────────────────────────────────────────────────────
+
+def clean_stale_html(output_dir: Path, expected_html: set[Path]) -> list[Path]:
+    """Remove .html files in output_dir that have no corresponding source page.
+
+    expected_html is the set of output paths that should exist after generation.
+    Returns the list of paths that were removed.
+    """
+    removed = []
+    for html_file in sorted(output_dir.rglob("*.html")):
+        if html_file not in expected_html:
+            try:
+                html_file.unlink()
+                removed.append(html_file)
+                # Remove empty parent directories up to output_dir
+                parent = html_file.parent
+                while parent != output_dir:
+                    try:
+                        parent.rmdir()  # only removes if empty
+                        parent = parent.parent
+                    except OSError:
+                        break
+            except OSError as exc:
+                print(f"  [clean] warning: could not remove {html_file}: {exc}", file=sys.stderr)
+    return removed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -452,14 +486,16 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
             current_files = find_markdown_files(root)
             current_mtimes = get_mtimes(current_files)
 
+            deleted = set(files) - set(current_files)
             changed = [p for p in current_files
                        if current_mtimes.get(p) != last_mtimes.get(p)]
 
-            if changed:
+            if changed or deleted:
                 all_files = build_all_files(current_files)
                 nav_pages = ([(out_html, title) for _, out_html, title in all_files]
                              if len(all_files) > 1 else [])
 
+                # Regenerate modified/new files
                 for md_path in changed:
                     entry = next((e for e in all_files if e[0] == md_path), None)
                     if entry is None:
@@ -468,8 +504,21 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
                     try:
                         convert_md_to_html(md_path, out_html, site_name, nav_pages=nav_pages, template=template)
                         print(f"  [watch] regenerated {md_path.name}")
+                    except FileNotFoundError:
+                        print(f"  [watch] {md_path.name} removed, skipping")
                     except Exception as exc:
                         print(f"  [watch] ERROR {md_path.name}: {exc}")
+
+                # Remove HTML for deleted source files
+                if deleted and output_dir is not None and output_dir.is_dir():
+                    expected = {out_html for _, out_html, _ in all_files}
+                    stale = clean_stale_html(output_dir, expected)
+                    for path in stale:
+                        try:
+                            rel = path.relative_to(output_dir)
+                        except ValueError:
+                            rel = path
+                        print(f"  [watch] removed stale {rel}")
 
                 last_mtimes = current_mtimes
                 files = current_files
@@ -483,6 +532,9 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    if sys.version_info < (3, 10):
+        sys.exit("Error: ssg.py requires Python 3.10 or later.")
+
     parser = argparse.ArgumentParser(
         description="Convert Markdown files to HTML, recursively.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -530,7 +582,7 @@ Examples:
         "--output",
         default=None,
         metavar="DIR",
-        help="Directory to write generated HTML files (default: ./output/)",
+        help="Directory to write generated HTML files (default: output/ relative to ssg.py, not cwd)",
     )
     parser.add_argument(
         "--port",
@@ -550,7 +602,25 @@ Examples:
         metavar="NAME",
         help='Theme to use from the themes/ directory (default: "default")',
     )
+    parser.add_argument(
+        "--list-themes",
+        action="store_true",
+        help="List available themes and exit",
+    )
     args = parser.parse_args()
+
+    if args.list_themes:
+        if _THEMES_DIR.is_dir():
+            themes = sorted(d.name for d in _THEMES_DIR.iterdir() if d.is_dir())
+            if themes:
+                print("Available themes:")
+                for t in themes:
+                    print(f"  {t}")
+            else:
+                print("No themes found in themes/")
+        else:
+            print("No themes/ directory found")
+        return
 
     # ── Resolve default path: prefer ./site/, fall back to cwd ──────────────
     if args.path is None:
@@ -589,16 +659,22 @@ Examples:
     else:
         output_dir = (Path(__file__).parent / "output").resolve()
 
+    if target.is_dir() and output_dir.is_relative_to(root):
+        print(f"Warning: output directory '{output_dir}' is inside the source directory '{root}'.")
+        print("  This will mix generated HTML with Markdown sources.")
+
     # ── Load theme ────────────────────────────────────────────────────────
     theme_template, theme_dir = load_theme(args.theme)
 
     # ── Pass 1: collect titles and compute output paths ───────────────────
     # all_files: list of (md_path, out_html_path, title)
     all_files: list[tuple] = []
+    drafts = 0
     for md_path in files:
         title, _, front = collect_page_info(md_path)
         if front.get("draft") is True:
             print(f"  [draft] skipping {md_path.name}")
+            drafts += 1
             continue
         # index.md is always labelled "Home" in the nav
         if md_path.stem.lower() == "index":
@@ -622,6 +698,17 @@ Examples:
         assets_root.mkdir(parents=True, exist_ok=True)
         copy_theme_assets(theme_dir, assets_root)
 
+    # ── Remove stale HTML files with no corresponding source ──────────────
+    if not args.dry_run and output_dir is not None and output_dir.is_dir():
+        expected = {out_html for _, out_html, _ in all_files}
+        stale = clean_stale_html(output_dir, expected)
+        for path in stale:
+            try:
+                rel = path.relative_to(output_dir)
+            except ValueError:
+                rel = path
+            print(f"  [clean] removed stale {rel}")
+
     ok = 0
     errors = 0
 
@@ -633,7 +720,11 @@ Examples:
             rel = md_path
 
         if args.dry_run:
-            print(f"  [dry-run] {rel}  →  {out_html}")
+            try:
+                out_rel = out_html.relative_to(Path.cwd())
+            except ValueError:
+                out_rel = out_html
+            print(f"  [dry-run] {rel}  →  {out_rel}")
             continue
         try:
             out = convert_md_to_html(md_path, out_html, args.name, nav_pages=nav_pages, template=theme_template)
@@ -644,7 +735,8 @@ Examples:
             errors += 1
 
     if not args.dry_run:
-        print(f"\nDone.  {ok} converted, {errors} errors.")
+        draft_note = f", {drafts} draft(s) skipped" if drafts else ""
+        print(f"\nDone.  {ok} converted{draft_note}, {errors} errors.")
 
     if not args.dry_run and args.watch:
         if args.serve is not None:
@@ -661,7 +753,10 @@ Examples:
 
     if not args.dry_run and args.serve is not None:
         serve_dir = output_dir if output_dir is not None else root
-        port = args.serve if isinstance(args.serve, int) else args.port
+        # args.serve is the inline port (e.g. --serve 9000) or 8000 (const when
+        # --serve is given without a value).  args.port is set by --port.
+        # Prefer --port when --serve was given without an explicit value.
+        port = args.serve if args.serve != 8000 else args.port
 
         # Find the first generated HTML file to open in the browser
         # Prefer index.html as the landing page
@@ -681,7 +776,14 @@ Examples:
             def log_message(self, fmt, *args):
                 pass  # suppress per-request noise
 
-        server = HTTPServer(("127.0.0.1", port), QuietHandler)
+        try:
+            server = HTTPServer(("127.0.0.1", port), QuietHandler)
+        except OSError as exc:
+            if exc.errno == 98 or "already in use" in str(exc).lower():
+                print(f"Error: port {port} is already in use. Try --port <other>")
+            else:
+                print(f"Error starting server: {exc}")
+            sys.exit(1)
         print(f"\nServing at http://localhost:{port}/")
         print(f"Opening  {open_url}")
         print("Press Ctrl+C to stop.\n")
