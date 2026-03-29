@@ -566,3 +566,61 @@ class TestFrontMatterIntegration:
         assert out.exists()
         html = out.read_text()
         assert "Plain" in html
+
+
+# ===========================================================================
+# 14. Themes
+# ===========================================================================
+
+
+class TestThemes:
+    def test_default_theme_loads(self):
+        template, theme_dir = ssg.load_theme("default")
+        import string
+        assert isinstance(template, string.Template)
+        assert "$title" in template.template
+        assert theme_dir.name == "default"
+
+    def test_missing_theme_exits_nonzero(self):
+        result = subprocess.run(
+            [sys.executable, str(SSG), "--theme", "nonexistent", str(SSG.parent / "site")],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "not found" in result.stdout + result.stderr
+
+    def test_theme_flag_accepted(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        run(str(tmp_path), "--theme", "default")
+        assert (tmp_path / "page.html").exists()
+
+    def test_theme_assets_copied_to_output(self, tmp_path):
+        import string
+        # Create a minimal custom theme with an extra asset
+        theme_dir = tmp_path / "themes" / "custom"
+        theme_dir.mkdir(parents=True)
+        # Write a minimal template with all required placeholders
+        default_template = (ssg._THEMES_DIR / "default" / "template.html").read_text()
+        (theme_dir / "template.html").write_text(default_template)
+        (theme_dir / "custom.css").write_text("body { color: red; }")
+
+        out_dir = tmp_path / "dist"
+        out_dir.mkdir()
+
+        original_themes_dir = ssg._THEMES_DIR
+        ssg._THEMES_DIR = tmp_path / "themes"
+        try:
+            ssg.copy_theme_assets(theme_dir, out_dir)
+        finally:
+            ssg._THEMES_DIR = original_themes_dir
+
+        assert (out_dir / "custom.css").exists()
+        assert not (out_dir / "template.html").exists()
+
+    def test_template_html_not_copied_as_asset(self, tmp_path):
+        out_dir = tmp_path / "dist"
+        out_dir.mkdir()
+        theme_dir = ssg._THEMES_DIR / "default"
+        ssg.copy_theme_assets(theme_dir, out_dir)
+        assert not (out_dir / "template.html").exists()

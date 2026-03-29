@@ -21,6 +21,7 @@ no configuration file required.
 - Built-in HTTP server (`--serve`) for local preview with correct theme persistence
 - `--watch` mode — polls source files and regenerates on change (works with or without `--serve`)
 - YAML front matter — optional `---` block at the top of any `.md` file for per-page metadata
+- Theme system — swap the entire HTML/CSS/JS layout with `--theme NAME`; themes are self-contained directories
 - Skips dot-directories (e.g. `.venv`, `.git`) and `README.md` files automatically
 
 ## Requirements
@@ -129,6 +130,9 @@ project/
 # Target a specific directory explicitly
 ./ssg.py ~/my-blog
 
+# Use a custom theme
+./ssg.py site/ --output output/ --theme mytheme
+
 # Watch for changes and regenerate automatically
 ./ssg.py site/ --output output/ --watch
 
@@ -159,6 +163,7 @@ project/
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
 | `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
 | `--watch` | — | Watch source files and regenerate on changes after initial build |
+| `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--version` | — | Print version and exit |
 
 ## Homepage
@@ -223,6 +228,49 @@ echo "hello world"
 
 Pygments attempts to auto-detect the language if none is specified. For best
 results, always declare the language after the opening fence.
+
+## Themes
+
+The visual layout is controlled by a theme. Themes live in `themes/<name>/`
+alongside `ssg.py` and are fully self-contained directories:
+
+```
+themes/
+└── default/          ← built-in theme
+    └── template.html ← HTML/CSS/JS skeleton
+```
+
+Additional files in the theme directory (CSS, images, fonts) are copied
+to the output root automatically at generation time.
+
+Select a theme with `--theme`:
+
+```bash
+./ssg.py site/ --output output/ --theme mytheme
+```
+
+### Creating a custom theme
+
+1. Copy `themes/default/` to `themes/mytheme/`
+2. Edit `template.html` — it uses Python's `string.Template` `$variable` syntax
+3. Add any static assets (CSS, images) alongside `template.html`
+
+Available variables in `template.html`:
+
+| Variable | Content |
+|---|---|
+| `$title` | Page title |
+| `$description` | Page description (meta) |
+| `$site_name` | Site name from `--name` |
+| `$date_str` | Today's date |
+| `$nav` | Navigation bar HTML |
+| `$content` | Rendered page content |
+| `$author_line` | Author/date attribution (empty if not set) |
+| `$author_meta` | `<meta name="author">` tag (empty if not set) |
+| `$keywords_meta` | `<meta name="keywords">` tag (empty if not set) |
+| `$source_file` | Source `.md` filename |
+| `$last_updated` | File modification timestamp |
+| `$HIGHLIGHT_CSS` | Pygments syntax highlighting CSS |
 
 ## Testing
 

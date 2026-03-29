@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.2.0
+Version: 0.3.0
 
 Usage:
     python ssg.py [directory]
@@ -16,12 +16,14 @@ Dependencies:
     pip install markdown pymdown-extensions pyyaml
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import os
 import sys
 import re
 import argparse
+import shutil
+import string
 import time
 import threading
 import webbrowser
@@ -138,576 +140,50 @@ def parse_front_matter(md_text: str) -> tuple:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HTML TEMPLATE
+# THEME LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 
-HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{title}</title>
-  <meta name="description" content="{description}" />
-  {author_meta}{keywords_meta}<!-- Apply saved theme before first paint to avoid flash -->
-  <script>
-    (function(){{
-      var t = localStorage.getItem("ssg-theme");
-      if (t) {{ document.documentElement.setAttribute("data-theme", t); }}
-      else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {{
-        document.documentElement.setAttribute("data-theme", "dark");
-      }}
-    }})();
-  </script>
-  <style>
-    /* ── Reset ────────────────────────────────────────────────────────────── */
-    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+_THEMES_DIR = Path(__file__).parent / "themes"
+
+
+def load_theme(name: str) -> tuple:
+    """Load template.html from themes/<name>/ and return (Template, theme_dir).
+
+    Exits with a clear error message if the theme or template.html is missing.
+    """
+    theme_dir = _THEMES_DIR / name
+    if not theme_dir.is_dir():
+        available = sorted(d.name for d in _THEMES_DIR.iterdir() if d.is_dir()) \
+            if _THEMES_DIR.is_dir() else []
+        hint = f"  Available: {', '.join(available)}" if available else \
+            "  (no themes/ directory found)"
+        print(f"Error: theme '{name}' not found at {theme_dir}\n{hint}")
+        sys.exit(1)
+    template_path = theme_dir / "template.html"
+    if not template_path.is_file():
+        print(f"Error: theme '{name}' is missing template.html ({template_path})")
+        sys.exit(1)
+    return string.Template(template_path.read_text(encoding="utf-8")), theme_dir
+
+
+def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
+    """Copy all non-template files from theme_dir into output_root.
+
+    Subdirectories are copied recursively. template.html is skipped.
+    Does nothing if the theme contains only template.html.
+    """
+    for src in theme_dir.iterdir():
+        if src.name == "template.html":
+            continue
+        dest = output_root / src.name
+        if src.is_file():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+        elif src.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(src, dest)
 
-    /* ── Design Tokens ────────────────────────────────────────────────────── */
-    :root {{
-      --bg:          #f9f8f6;
-      --surface:     #f0ede8;
-      --border:      #c8c4bc;
-      --text:        #1c1b18;
-      --muted:       #78756e;
-      --accent:      #5c7a18;
-      --accent-soft: #f2f7e6;
-      --code-bg:     #f3f2ef;
-      --code-border: #dddbd6;
-      --nav-bg:      #f0ede8;
-      --nav-drop:    #f7f5f2;
-
-      --font-body: "Georgia", "Times New Roman", serif;
-      --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-      --font-ui:   system-ui, -apple-system, sans-serif;
-
-      --line:    1.75;
-      --gap:     clamp(1.25rem, 4vw, 3rem);
-
-      /* Toggle button */
-      --btn-bg:      #dedad4;
-      --btn-text:    #1c1b18;
-      --btn-border:  #b0ada6;
-    }}
-
-    /* ── Dark mode tokens ─────────────────────────────────────────────────── */
-    [data-theme="dark"] {{
-      --bg:          #141412;
-      --surface:     #1d1c19;
-      --border:      #2e2c28;
-      --text:        #e8e6e0;
-      --muted:       #8a8680;
-      --accent:      #c8e050;
-      --accent-soft: #1e2608;
-      --code-bg:     #1a1917;
-      --code-border: #2e2c28;
-      --nav-bg:      #1d1c19;
-      --nav-drop:    #242320;
-      --btn-bg:      #2a2926;
-      --btn-text:    #e8e6e0;
-      --btn-border:  #3a3835;
-    }}
-
-    /* Honour OS preference when no manual toggle has been set */
-    @media (prefers-color-scheme: dark) {{
-      :root:not([data-theme="light"]) {{
-        --bg:          #141412;
-        --surface:     #1d1c19;
-        --border:      #2e2c28;
-        --text:        #e8e6e0;
-        --muted:       #8a8680;
-        --accent:      #c8e050;
-        --accent-soft: #1e2608;
-        --code-bg:     #1a1917;
-        --code-border: #2e2c28;
-        --nav-bg:      #1d1c19;
-        --nav-drop:    #242320;
-        --btn-bg:      #2a2926;
-        --btn-text:    #e8e6e0;
-        --btn-border:  #3a3835;
-      }}
-    }}
-
-    /* ── Base ─────────────────────────────────────────────────────────────── */
-    html {{
-      scroll-behavior: smooth;
-      font-size: clamp(15px, 1.05vw, 17px);
-      /* push content below sticky header + nav */
-      scroll-padding-top: 7rem;
-    }}
-
-    body {{
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font-body);
-      line-height: var(--line);
-      min-height: 100dvh;
-      display: flex;
-      flex-direction: column;
-    }}
-
-    /* ── Sticky shell (header + nav grouped) ──────────────────────────────── */
-    .sticky-shell {{
-      position: sticky;
-      top: 0;
-      z-index: 200;
-      display: flex;
-      flex-direction: column;
-    }}
-
-    /* ── Site Header ──────────────────────────────────────────────────────── */
-    .site-header {{
-      width: 100%;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 0 10%;
-    }}
-
-    .site-header-inner {{
-      display: flex;
-      align-items: center;
-      height: 3.25rem;
-      gap: 1.5rem;
-    }}
-
-    .site-name {{
-      font-family: var(--font-ui);
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--accent);
-      text-decoration: none;
-    }}
-    .site-name:hover {{ opacity: 0.7; }}
-
-    .header-sep {{ flex: 1; }}
-
-    .site-meta {{
-      font-size: 0.78rem;
-      color: var(--muted);
-      font-style: italic;
-      font-family: var(--font-ui);
-    }}
-
-    /* ── Nav bar ──────────────────────────────────────────────────────────── */
-    .site-nav {{
-      width: 100%;
-      background: var(--nav-bg);
-      border-bottom: 1px solid var(--border);
-      padding: 0 10%;
-    }}
-
-    .site-nav ul {{
-      list-style: none;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0;
-      margin: 0;
-      padding: 0;
-    }}
-
-    /* Top-level items (H2s) */
-    .site-nav > ul > li {{
-      position: relative;
-    }}
-
-    .site-nav > ul > li > a {{
-      display: block;
-      font-family: var(--font-ui);
-      font-size: 0.78rem;
-      font-weight: 500;
-      letter-spacing: 0.03em;
-      color: var(--text);
-      text-decoration: none;
-      padding: 0.65rem 1rem;
-      border-bottom: 2px solid transparent;
-      white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
-    }}
-
-    .site-nav > ul > li > a:hover,
-    .site-nav > ul > li:focus-within > a {{
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }}
-
-    /* Dropdown (H3s) */
-    .site-nav > ul > li > ul {{
-      display: none;
-      position: absolute;
-      top: 100%;
-      left: 0;
-      min-width: 220px;
-      background: var(--nav-drop);
-      border: 1px solid var(--border);
-      border-top: 2px solid var(--accent);
-      border-radius: 0 0 6px 6px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-      padding: 0.4rem 0;
-      z-index: 300;
-      list-style: none;
-    }}
-
-    .site-nav > ul > li:hover > ul,
-    .site-nav > ul > li:focus-within > ul {{
-      display: block;
-    }}
-
-    .site-nav > ul > li > ul > li > a {{
-      display: block;
-      font-family: var(--font-ui);
-      font-size: 0.76rem;
-      color: var(--muted);
-      text-decoration: none;
-      padding: 0.4rem 1.25rem;
-      border-left: 2px solid transparent;
-      transition: color 0.12s, border-color 0.12s, background 0.12s;
-    }}
-
-    .site-nav > ul > li > ul > li > a:hover {{
-      color: var(--accent);
-      border-left-color: var(--accent);
-      background: var(--accent-soft);
-    }}
-
-    /* H4 level (third tier, if present) */
-    .site-nav > ul > li > ul > li > ul {{
-      list-style: none;
-      padding: 0;
-    }}
-    .site-nav > ul > li > ul > li > ul > li > a {{
-      display: block;
-      font-family: var(--font-ui);
-      font-size: 0.73rem;
-      color: var(--muted);
-      text-decoration: none;
-      padding: 0.3rem 1.25rem 0.3rem 2.25rem;
-      opacity: 0.8;
-      transition: color 0.12s, opacity 0.12s;
-    }}
-    .site-nav > ul > li > ul > li > ul > li > a:hover {{
-      color: var(--accent);
-      opacity: 1;
-    }}
-
-    /* Current page indicator */
-    .site-nav > ul > li.nav-current > a {{
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-      font-weight: 600;
-    }}
-
-    /* Divider between pages section and TOC section */
-    .site-nav > ul > li.nav-divider {{
-      display: flex;
-      align-items: center;
-      padding: 0 0.5rem;
-      color: var(--border);
-      font-size: 1rem;
-      user-select: none;
-      pointer-events: none;
-    }}
-
-    /* Hide nav if empty */
-    .site-nav:empty {{ display: none; }}
-
-    /* ── Page content wrapper — 80% centered ─────────────────────────────── */
-    .page-wrap {{
-      flex: 1;
-      width: 80%;
-      margin: 0 auto;
-      padding: 1.5rem 0 calc(var(--gap) * 2);
-    }}
-
-    /* ── Article header ───────────────────────────────────────────────────── */
-    /* ── Prose ────────────────────────────────────────────────────────────── */
-    .prose > * + * {{ margin-top: 1.25em; }}
-
-    .prose h1,
-    .prose h2,
-    .prose h3,
-    .prose h4,
-    .prose h5,
-    .prose h6 {{
-      line-height: 1.25;
-      font-weight: normal;
-      letter-spacing: -0.015em;
-      margin-top: 2em;
-      margin-bottom: 0.4em;
-    }}
-
-    .prose h1 {{ font-size: 2em; }}
-    .prose h2 {{ font-size: 1.45em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }}
-    .prose h3 {{ font-size: 1.2em; }}
-    .prose h4 {{ font-size: 1em; font-style: italic; }}
-
-    .prose p {{ margin-top: 1em; }}
-
-    .prose a {{
-      color: var(--accent);
-      text-decoration: underline;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 3px;
-    }}
-    .prose a:hover {{ opacity: 0.7; }}
-
-    .prose strong {{ font-weight: bold; }}
-    .prose em {{ font-style: italic; }}
-
-    .prose ul, .prose ol {{ padding-left: 1.5em; }}
-    .prose ul {{ list-style: disc; }}
-    .prose ol {{ list-style: decimal; }}
-    .prose li + li {{ margin-top: 0.3em; }}
-    .prose li > ul, .prose li > ol {{ margin-top: 0.3em; }}
-
-    .prose blockquote {{
-      border-left: 3px solid var(--accent);
-      padding: 0.6em 1.2em;
-      background: var(--accent-soft);
-      border-radius: 0 4px 4px 0;
-      font-style: italic;
-      color: var(--muted);
-    }}
-    .prose blockquote p {{ margin-top: 0; }}
-
-    .prose code {{
-      font-family: var(--font-mono);
-      font-size: 0.85em;
-      background: var(--code-bg);
-      border: 1px solid var(--code-border);
-      padding: 0.1em 0.35em;
-      border-radius: 3px;
-    }}
-
-    .prose pre {{
-      background: #1c1b18;
-      color: #e8e6e0;
-      border-radius: 6px;
-      padding: 1.25em 1.5em;
-      overflow-x: auto;
-      font-family: var(--font-mono);
-      font-size: 0.82em;
-      line-height: 1.6;
-      border: 1px solid #2e2c27;
-    }}
-    .prose pre code {{
-      background: transparent;
-      border: none;
-      padding: 0;
-      font-size: inherit;
-      color: inherit;
-    }}
-
-    .prose table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9em;
-    }}
-    .prose th {{
-      text-align: left;
-      font-weight: bold;
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      padding: 0.5em 0.8em;
-    }}
-    .prose td {{
-      border: 1px solid var(--border);
-      padding: 0.45em 0.8em;
-    }}
-    .prose tr:nth-child(even) td {{ background: var(--accent-soft); }}
-
-    .prose hr {{
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 2.5em 0;
-    }}
-
-    .prose img {{
-      max-width: 100%;
-      height: auto;
-      border-radius: 4px;
-      display: block;
-    }}
-
-    .prose .footnote {{
-      font-size: 0.82em;
-      border-top: 1px solid var(--border);
-      margin-top: 2.5em;
-      padding-top: 1em;
-      color: var(--muted);
-    }}
-
-    .prose dl dt {{ font-weight: bold; margin-top: 0.8em; }}
-    .prose dl dd {{ margin-left: 1.5em; color: var(--muted); }}
-
-
-    /* Permalink anchors from TocExtension */
-    .prose .headerlink {{
-      opacity: 0;
-      margin-left: 0.4em;
-      font-size: 0.7em;
-      text-decoration: none;
-      color: var(--muted);
-      transition: opacity 0.15s;
-    }}
-    .prose :is(h2,h3,h4):hover .headerlink {{ opacity: 1; }}
-
-    /* ── Footer ───────────────────────────────────────────────────────────── */
-    .site-footer {{
-      width: 100%;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 0.9rem 10%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }}
-
-    .site-footer p {{
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-family: var(--font-ui);
-    }}
-
-    /* ── Responsive ───────────────────────────────────────────────────────── */
-    @media (max-width: 900px) {{
-      .page-wrap {{ width: 92%; }}
-      .site-header, .site-nav {{ padding-left: 4%; padding-right: 4%; }}
-      .site-footer {{ padding-left: 4%; padding-right: 4%; }}
-
-      /* Collapse nav to horizontal scroll on tablet */
-      .site-nav > ul {{ flex-wrap: nowrap; overflow-x: auto; }}
-      .site-nav > ul > li > ul {{ display: none !important; }}
-    }}
-
-    @media (max-width: 520px) {{
-      .page-wrap {{ width: 96%; }}
-      .site-nav {{ display: none; }}
-    }}
-
-    /* ── Dark mode toggle button ─────────────────────────────────────────── */
-    .theme-toggle {{
-      background: var(--btn-bg);
-      color: var(--btn-text);
-      border: 1px solid var(--btn-border);
-      border-radius: 6px;
-      padding: 0.25rem 0.65rem;
-      font-family: var(--font-ui);
-      font-size: 0.75rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: background 0.15s, border-color 0.15s;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }}
-    .theme-toggle:hover {{
-      border-color: var(--accent);
-      color: var(--accent);
-    }}
-    .theme-toggle .icon {{ font-size: 0.9rem; line-height: 1; }}
-
-
-    {{HIGHLIGHT_CSS}}
-
-    /* ── Front matter tags ────────────────────────────────────────────────── */
-    .page-tags {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-    }}
-    .page-tags .tag {{
-      font-family: var(--font-ui);
-      font-size: 0.75rem;
-      background: var(--accent-soft);
-      color: var(--accent);
-      border: 1px solid currentColor;
-      border-radius: 3px;
-      padding: 0.15rem 0.5rem;
-    }}
-
-    /* ── Print ────────────────────────────────────────────────────────────── */
-    @media print {{
-      .sticky-shell, .site-footer {{ display: none; }}
-      .page-wrap {{ width: 100%; }}
-      body {{ background: white; }}
-    }}
-  </style>
-</head>
-<body>
-
-<div class="sticky-shell">
-  <header class="site-header">
-    <div class="site-header-inner">
-      <a class="site-name" href="/">{site_name}</a>
-      <span class="header-sep"></span>
-      <span class="site-meta">{date_str}</span>
-      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
-        <span class="icon" id="themeIcon">&#9790;</span>
-        <span id="themeLabel">Dark</span>
-      </button>
-    </div>
-  </header>
-  <nav class="site-nav" aria-label="Site navigation">
-    {nav}
-  </nav>
-</div>
-
-<div class="page-wrap">
-  <article class="prose">
-    {content}
-  </article>
-</div>
-
-<footer class="site-footer">
-  <p>{source_file}</p>
-  <p>{author_line}Last updated: {last_updated} &nbsp;&middot;&nbsp; Generated by <strong>ssg.py</strong></p>
-</footer>
-
-<script>
-(function () {{
-  var STORAGE_KEY = "ssg-theme";
-  var root = document.documentElement;
-  var btn  = document.getElementById("themeToggle");
-  var icon = document.getElementById("themeIcon");
-  var lbl  = document.getElementById("themeLabel");
-
-  function currentTheme() {{
-    return root.getAttribute("data-theme") || "light";
-  }}
-
-  function syncButton(theme) {{
-    if (theme === "dark") {{
-      icon.innerHTML = "&#9728;";
-      lbl.textContent = "Light";
-    }} else {{
-      icon.innerHTML = "&#9790;";
-      lbl.textContent = "Dark";
-    }}
-  }}
-
-  // Sync button label to whatever the <head> script already applied
-  syncButton(currentTheme());
-
-  btn.addEventListener("click", function () {{
-    var next = currentTheme() === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    localStorage.setItem(STORAGE_KEY, next);
-    syncButton(next);
-  }});
-}})();
-</script>
-
-</body>
-</html>
-"""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -787,12 +263,17 @@ def collect_page_info(md_path: Path) -> tuple:
 
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
-                       nav_pages: Optional[list] = None) -> Path:
+                       nav_pages: Optional[list] = None,
+                       template: Optional[string.Template] = None) -> Path:
     """Read a .md file and write the HTML output to out_path.
 
     nav_pages is a list of (out_html_path, title) tuples for every page being
     generated, used to build the cross-page navigation bar.
+    template is a string.Template loaded from the active theme; defaults to
+    the built-in default theme when not supplied.
     """
+    if template is None:
+        template, _ = load_theme("default")
     md_text = md_path.read_text(encoding="utf-8")
     front, body = parse_front_matter(md_text)
 
@@ -875,7 +356,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
     source_rel = md_path.name
 
-    html = HTML_TEMPLATE.format(
+    html = template.substitute(
         title=title,
         description=description,
         author_meta=author_meta,
@@ -886,9 +367,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
         content=content_html,
         nav=nav_html,
         source_file=source_rel,
-        generated_at=generated_at,
         last_updated=last_updated,
-    ).replace("{HIGHLIGHT_CSS}", HIGHLIGHT_CSS, 1)
+        HIGHLIGHT_CSS=HIGHLIGHT_CSS,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
@@ -923,6 +404,7 @@ def find_markdown_files(root: Path) -> list[Path]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
+                      template: string.Template,
                       poll_interval: float = 1.0) -> None:
     """Poll source .md files for changes and regenerate on modifications.
 
@@ -980,7 +462,7 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
                         continue
                     _, out_html, _ = entry
                     try:
-                        convert_md_to_html(md_path, out_html, site_name, nav_pages=nav_pages)
+                        convert_md_to_html(md_path, out_html, site_name, nav_pages=nav_pages, template=template)
                         print(f"  [watch] regenerated {md_path.name}")
                     except Exception as exc:
                         print(f"  [watch] ERROR {md_path.name}: {exc}")
@@ -1058,6 +540,12 @@ Examples:
         action="store_true",
         help="Watch source files and regenerate on changes after initial build",
     )
+    parser.add_argument(
+        "--theme",
+        default="default",
+        metavar="NAME",
+        help='Theme to use from the themes/ directory (default: "default")',
+    )
     args = parser.parse_args()
 
     # ── Resolve default path: prefer ./site/, fall back to cwd ──────────────
@@ -1094,6 +582,9 @@ Examples:
     # ── Resolve output directory ───────────────────────────────────────────
     output_dir = Path(args.output).resolve() if args.output else None
 
+    # ── Load theme ────────────────────────────────────────────────────────
+    theme_template, theme_dir = load_theme(args.theme)
+
     # ── Pass 1: collect titles and compute output paths ───────────────────
     # all_files: list of (md_path, out_html_path, title)
     all_files: list[tuple] = []
@@ -1118,6 +609,12 @@ Examples:
     # Single-file invocations get no cross-page nav (nothing to link to)
     nav_pages = [(out_html, title) for _, out_html, title in all_files] if len(all_files) > 1 else []
 
+    # ── Copy theme assets to output root ─────────────────────────────────
+    if not args.dry_run:
+        assets_root = output_dir if output_dir is not None else root
+        assets_root.mkdir(parents=True, exist_ok=True)
+        copy_theme_assets(theme_dir, assets_root)
+
     ok = 0
     errors = 0
 
@@ -1132,7 +629,7 @@ Examples:
             print(f"  [dry-run] {rel}  →  {out_html}")
             continue
         try:
-            out = convert_md_to_html(md_path, out_html, args.name, nav_pages=nav_pages)
+            out = convert_md_to_html(md_path, out_html, args.name, nav_pages=nav_pages, template=theme_template)
             print(f"  ✓  {rel}  →  {out}")
             ok += 1
         except Exception as exc:
@@ -1147,12 +644,12 @@ Examples:
             # Server takes the main thread; watch runs as a background daemon
             watch_thread = threading.Thread(
                 target=watch_and_rebuild,
-                args=(root, output_dir, args.name),
+                args=(root, output_dir, args.name, theme_template),
                 daemon=True,
             )
             watch_thread.start()
         else:
-            watch_and_rebuild(root, output_dir, args.name)
+            watch_and_rebuild(root, output_dir, args.name, theme_template)
             return
 
     if not args.dry_run and args.serve is not None:
