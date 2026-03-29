@@ -1,7 +1,7 @@
 ---
 title: Front Matter Reference
 description: A guide to using YAML front matter in ssg.py to control per-page metadata.
-author: Chris
+author: Chris H.
 date: 2026-03-29
 tags:
   - front-matter
