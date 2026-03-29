@@ -20,6 +20,7 @@ no configuration file required.
 - `Last updated` timestamp auto-generated from the file's modification time
 - Built-in HTTP server (`--serve`) for local preview with correct theme persistence
 - `--watch` mode — polls source files and regenerates on change (works with or without `--serve`)
+- Stale output cleanup — HTML files with no corresponding source are removed automatically on every generation and in `--watch` mode when source files are deleted
 - YAML front matter — optional `---` block at the top of any `.md` file for per-page metadata
 - Theme system — swap the entire HTML/CSS/JS layout with `--theme NAME`; themes are self-contained directories
 - Skips dot-directories (e.g. `.venv`, `.git`) and `README.md` files automatically

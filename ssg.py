@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.3.1
+Version: 0.3.2
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 import html
 import os
@@ -386,6 +386,35 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# STALE OUTPUT CLEANUP
+# ─────────────────────────────────────────────────────────────────────────────
+
+def clean_stale_html(output_dir: Path, expected_html: set[Path]) -> list[Path]:
+    """Remove .html files in output_dir that have no corresponding source page.
+
+    expected_html is the set of output paths that should exist after generation.
+    Returns the list of paths that were removed.
+    """
+    removed = []
+    for html_file in sorted(output_dir.rglob("*.html")):
+        if html_file not in expected_html:
+            try:
+                html_file.unlink()
+                removed.append(html_file)
+                # Remove empty parent directories up to output_dir
+                parent = html_file.parent
+                while parent != output_dir:
+                    try:
+                        parent.rmdir()  # only removes if empty
+                        parent = parent.parent
+                    except OSError:
+                        break
+            except OSError as exc:
+                print(f"  [clean] warning: could not remove {html_file}: {exc}", file=sys.stderr)
+    return removed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # DIRECTORY WALKER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -457,14 +486,16 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
             current_files = find_markdown_files(root)
             current_mtimes = get_mtimes(current_files)
 
+            deleted = set(files) - set(current_files)
             changed = [p for p in current_files
                        if current_mtimes.get(p) != last_mtimes.get(p)]
 
-            if changed:
+            if changed or deleted:
                 all_files = build_all_files(current_files)
                 nav_pages = ([(out_html, title) for _, out_html, title in all_files]
                              if len(all_files) > 1 else [])
 
+                # Regenerate modified/new files
                 for md_path in changed:
                     entry = next((e for e in all_files if e[0] == md_path), None)
                     if entry is None:
@@ -477,6 +508,17 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
                         print(f"  [watch] {md_path.name} removed, skipping")
                     except Exception as exc:
                         print(f"  [watch] ERROR {md_path.name}: {exc}")
+
+                # Remove HTML for deleted source files
+                if deleted and output_dir is not None and output_dir.is_dir():
+                    expected = {out_html for _, out_html, _ in all_files}
+                    stale = clean_stale_html(output_dir, expected)
+                    for path in stale:
+                        try:
+                            rel = path.relative_to(output_dir)
+                        except ValueError:
+                            rel = path
+                        print(f"  [watch] removed stale {rel}")
 
                 last_mtimes = current_mtimes
                 files = current_files
@@ -655,6 +697,17 @@ Examples:
         assets_root = output_dir if output_dir is not None else root
         assets_root.mkdir(parents=True, exist_ok=True)
         copy_theme_assets(theme_dir, assets_root)
+
+    # ── Remove stale HTML files with no corresponding source ──────────────
+    if not args.dry_run and output_dir is not None and output_dir.is_dir():
+        expected = {out_html for _, out_html, _ in all_files}
+        stale = clean_stale_html(output_dir, expected)
+        for path in stale:
+            try:
+                rel = path.relative_to(output_dir)
+            except ValueError:
+                rel = path
+            print(f"  [clean] removed stale {rel}")
 
     ok = 0
     errors = 0

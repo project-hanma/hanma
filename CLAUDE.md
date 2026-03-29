@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~690 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.3.1 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.3.2 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`
 
@@ -96,6 +96,7 @@ Select a theme with `--theme NAME` (default: `default`). The `themes/default/` t
 - `index.md` at the root of the target directory is treated as the site homepage and titled "Home" in navigation.
 - `build_nav_html()` receives `(out_html_path, title)` pairs and computes relative URLs between output files — navigation links are always relative to the output location, not the source.
 - When `--output DIR` is given, the source tree is mirrored under `DIR` (e.g. `site/posts/hello.md` → `DIR/posts/hello.html`).
+- `clean_stale_html(output_dir, expected_html)` removes `.html` files in the output directory that have no corresponding source page. Called after pass 1 on initial generation, and in `--watch` mode whenever source files are deleted. Empty subdirectories left behind are pruned. Only runs when a separate `output_dir` is in use (not when HTML is written alongside sources).
 
 ## Design Philosophy
 
