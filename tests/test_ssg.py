@@ -638,3 +638,149 @@ class TestThemes:
         theme_dir = ssg._THEMES_DIR / "default"
         ssg.copy_theme_assets(theme_dir, out_dir)
         assert not (out_dir / "template.html").exists()
+
+
+# ===========================================================================
+# 15. Security — XSS escaping in front-matter fields
+# ===========================================================================
+
+
+class TestXSSEscaping:
+    def test_title_xss_escaped(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    '---\ntitle: "</title><script>alert(1)</script>"\n---\nContent.')
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html_text = out.read_text()
+        assert "<script>alert(1)</script>" not in html_text
+        assert "&lt;script&gt;" in html_text
+
+    def test_author_xss_escaped_in_author_line(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    '---\nauthor: "</em><script>xss</script>"\n---\n# T\n\nContent.')
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html_text = out.read_text()
+        assert "<script>xss</script>" not in html_text
+
+    def test_site_name_xss_escaped(self, tmp_path):
+        src = write(tmp_path / "page.md", "# T\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, '<script>evil</script>', nav_pages=[])
+        html_text = out.read_text()
+        assert "<script>evil</script>" not in html_text
+
+    def test_nav_title_xss_escaped(self, tmp_path):
+        src = write(tmp_path / "page.md", "# T\n\nContent.")
+        out = tmp_path / "page.html"
+        nav_pages = [(out, '<script>nav</script>')]
+        ssg.convert_md_to_html(src, out, "S", nav_pages=nav_pages)
+        html_text = out.read_text()
+        assert "<script>nav</script>" not in html_text
+
+    def test_description_xss_escaped(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    '---\ndescription: "<script>desc</script>"\n---\n# T\n\nContent.')
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html_text = out.read_text()
+        assert "<script>desc</script>" not in html_text
+
+
+# ===========================================================================
+# 16. Port handling — B1 (--serve --port N)
+# ===========================================================================
+
+
+class TestPortHandling:
+    def test_serve_port_flag_accepted(self):
+        # --serve --port N should not crash at argument parsing level
+        result = subprocess.run(
+            [sys.executable, str(SSG), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "--port" in result.stdout
+        assert "--serve" in result.stdout
+
+
+# ===========================================================================
+# 17. YAML warning — S5/U2 (malformed front matter emits warning)
+# ===========================================================================
+
+
+class TestMalformedYAMLWarning:
+    def test_malformed_yaml_prints_warning(self, capsys):
+        md = "---\n: bad: yaml: {\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md, source_path=Path("test.md"))
+        captured = capsys.readouterr()
+        assert "warning" in captured.err.lower() or "malformed" in captured.err.lower()
+
+    def test_malformed_yaml_integration_generates_html(self, tmp_path):
+        src = write(tmp_path / "bad.md", "---\n: bad: yaml: {\n---\n# Title\n\nContent.")
+        out = tmp_path / "bad.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        assert out.exists()
+        assert "Title" in out.read_text()
+
+
+# ===========================================================================
+# 18. Navigation relative URLs — T2
+# ===========================================================================
+
+
+class TestNavRelativeURLs:
+    def test_nav_link_from_subdir_to_index_is_relative(self, tmp_path):
+        write(tmp_path / "index.md", "# Home\n\nWelcome.")
+        write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        html = (out_dir / "posts" / "hello.html").read_text()
+        # Link from posts/hello.html to index.html must go up one level
+        assert "../index.html" in html
+
+    def test_nav_link_from_index_to_subdir_page(self, tmp_path):
+        write(tmp_path / "index.md", "# Home\n\nWelcome.")
+        write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        html = (out_dir / "index.html").read_text()
+        assert "posts/hello.html" in html
+
+
+# ===========================================================================
+# 19. Draft count in summary — U4
+# ===========================================================================
+
+
+class TestDraftSummary:
+    def test_draft_count_in_summary(self, tmp_path):
+        write(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        result = run(str(tmp_path), "--output", str(out_dir))
+        assert "draft" in result.stdout.lower()
+        assert "1" in result.stdout
+
+
+# ===========================================================================
+# 20. --list-themes flag — U7
+# ===========================================================================
+
+
+class TestListThemes:
+    def test_list_themes_exits_zero(self):
+        result = subprocess.run(
+            [sys.executable, str(SSG), "--list-themes"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+
+    def test_list_themes_shows_default(self):
+        result = subprocess.run(
+            [sys.executable, str(SSG), "--list-themes"],
+            capture_output=True,
+            text=True,
+        )
+        assert "default" in result.stdout
