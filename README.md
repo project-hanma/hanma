@@ -42,7 +42,7 @@ source .venv/bin/activate        # Linux / macOS
 .venv\Scripts\activate           # Windows
 
 # Install dependencies
-pip install markdown pygments pymdown-extensions pyyaml
+pip install markdown pygments pyyaml
 
 # When you are done
 deactivate
@@ -290,10 +290,7 @@ CI runs automatically via Gitea Actions on every push and pull request to
 
 ## Customisation
 
-All visual styling lives inside the `HTML_TEMPLATE` string at the top of
-`ssg.py`. CSS custom properties (variables) control the colour scheme,
-typography, and spacing — edit the `:root` block to retheme the entire site
-in one place.
+Visual styling is fully delegated to the active theme. See the **Themes** section above for details on creating or modifying themes under `themes/`.
 
 ## License
 

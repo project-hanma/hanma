@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.3.0
+Version: 0.3.1
 
 Usage:
     python ssg.py [directory]
@@ -13,11 +13,12 @@ All .md files found in the directory tree are converted to .html
 files written alongside the source .md file.
 
 Dependencies:
-    pip install markdown pymdown-extensions pyyaml
+    pip install markdown pygments pyyaml
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
+import html
 import os
 import sys
 import re
@@ -45,7 +46,7 @@ try:
     from markdown.extensions.meta import MetaExtension
 except ImportError:
     print("Error: 'markdown' package not found.")
-    print("Install it with:  pip install markdown pymdown-extensions")
+    print("Install it with:  pip install markdown pygments pyyaml")
     sys.exit(1)
 
 try:
@@ -151,7 +152,10 @@ def load_theme(name: str) -> tuple:
 
     Exits with a clear error message if the theme or template.html is missing.
     """
-    theme_dir = _THEMES_DIR / name
+    theme_dir = (_THEMES_DIR / name).resolve()
+    if not theme_dir.is_relative_to(_THEMES_DIR.resolve()):
+        print(f"Error: theme name '{name}' is invalid (path traversal detected)")
+        sys.exit(1)
     if not theme_dir.is_dir():
         available = sorted(d.name for d in _THEMES_DIR.iterdir() if d.is_dir()) \
             if _THEMES_DIR.is_dir() else []
@@ -309,9 +313,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
         author_line = ""
 
     # Meta tags for head
-    author_meta = f'<meta name="author" content="{fm_author}" />\n  ' if fm_author else ""
+    author_meta = f'<meta name="author" content="{html.escape(fm_author)}" />\n  ' if fm_author else ""
     if isinstance(fm_tags, list) and fm_tags:
-        keywords_meta = f'<meta name="keywords" content="{", ".join(str(t) for t in fm_tags)}" />\n  '
+        keywords_meta = f'<meta name="keywords" content="{html.escape(", ".join(str(t) for t in fm_tags))}" />\n  '
     else:
         keywords_meta = ""
 
@@ -335,7 +339,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
     # Append tag strip to content if tags are present
     if isinstance(fm_tags, list) and fm_tags:
-        tag_items = "".join(f'<span class="tag">{t}</span>' for t in fm_tags)
+        tag_items = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in fm_tags)
         content_html += f'\n<div class="page-tags">{tag_items}</div>'
 
     # Extract TOC inner HTML (strip the outer <div class="toc"> wrapper)
@@ -356,7 +360,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
     source_rel = md_path.name
 
-    html = template.substitute(
+    page_html = template.substitute(
         title=title,
         description=description,
         author_meta=author_meta,
@@ -372,7 +376,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(html, encoding="utf-8")
+    out_path.write_text(page_html, encoding="utf-8")
     return out_path
 
 
@@ -677,7 +681,7 @@ Examples:
             def log_message(self, fmt, *args):
                 pass  # suppress per-request noise
 
-        server = HTTPServer(("", port), QuietHandler)
+        server = HTTPServer(("127.0.0.1", port), QuietHandler)
         print(f"\nServing at http://localhost:{port}/")
         print(f"Opening  {open_url}")
         print("Press Ctrl+C to stop.\n")
