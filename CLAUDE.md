@@ -6,16 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal, zero-configuration static site generator that converts Markdown files to self-contained HTML pages. The entire implementation lives in a single file (`ssg.py`, ~980 lines) with no build system or config files.
 
-**Version:** 0.1.1 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.2.0 (accessible as `__version__` and via `--version` flag)
 
-**Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pymdown-extensions`
+**Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pymdown-extensions`, `pyyaml`
 
 ## Setup & Running
 
 ```bash
 # Install dependencies
 source .venv/bin/activate
-pip install markdown pygments pymdown-extensions
+pip install markdown pygments pymdown-extensions pyyaml
 
 # Generate HTML from ./site/ in-place (default)
 ./ssg.py
@@ -27,6 +27,10 @@ pip install markdown pygments pymdown-extensions
 ./ssg.py --name "My Blog" --serve
 ./ssg.py --name "My Blog" --serve 9000
 ./ssg.py --name "My Blog" --serve --port 9000
+
+# Watch for changes and regenerate automatically
+./ssg.py --watch
+./ssg.py --watch --serve
 
 # Generate into dist/ and serve from there
 ./ssg.py --output dist/ --name "My Blog" --serve
@@ -57,6 +61,17 @@ All logic is in `ssg.py`. The pipeline runs in two passes over discovered Markdo
 1. **Discovery** — `find_markdown_files(root)` walks the directory tree, skipping dotfiles/dotdirs (`.git`, `.venv`) and `README.md` files.
 2. **Pass 1 (metadata)** — `collect_page_info()` extracts title and description from each file; output paths are computed here (in-place or under `--output` dir). Results are stored as `(md_path, out_html_path, title)` triples.
 3. **Pass 2 (conversion)** — `convert_md_to_html(md_path, out_path, ...)` parses Markdown with extensions (tables, footnotes, definition lists, abbreviations, fenced code + Pygments highlighting, TOC, smart typography), injects the result into the large `HTML_TEMPLATE` constant, and writes to `out_path` (creating parent directories as needed).
+
+**Front matter fields** (YAML block delimited by `---` at the top of any `.md` file):
+
+| Field | Type | Effect |
+|---|---|---|
+| `title` | string | Overrides auto-extracted H1 |
+| `description` | string | Overrides auto-extracted first paragraph |
+| `author` | string | Shown in page footer; added as `<meta name="author">` |
+| `date` | YYYY-MM-DD | Shown in page footer alongside author |
+| `tags` | list | Rendered as a tag strip below content; added as `<meta name="keywords">` |
+| `draft` | bool | If `true`, page is skipped entirely during generation |
 
 **Key implementation details:**
 - `HTML_TEMPLATE` (lines ~95–645) is a single string containing all CSS, JavaScript, and the HTML skeleton. CSS custom properties and responsive breakpoints (900px, 520px) are defined here.

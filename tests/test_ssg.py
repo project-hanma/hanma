@@ -432,3 +432,137 @@ class TestEdgeCases:
         write(tmp_path / "a" / "b" / "c" / "deep.md", "# Deep\n\nContent.")
         run(str(tmp_path))
         assert (tmp_path / "a" / "b" / "c" / "deep.html").exists()
+
+
+# ===========================================================================
+# 12. Front matter — parse_front_matter()
+# ===========================================================================
+
+
+class TestParseFrontMatter:
+    def test_no_front_matter_returns_empty_dict(self):
+        meta, body = ssg.parse_front_matter("# Hello\n\nContent.")
+        assert meta == {}
+        assert "Hello" in body
+
+    def test_front_matter_stripped_from_body(self):
+        md = "---\ntitle: My Title\n---\n# Hello\n\nContent."
+        meta, body = ssg.parse_front_matter(md)
+        assert "title:" not in body
+        assert "---" not in body
+
+    def test_title_field_parsed(self):
+        md = "---\ntitle: My Title\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md)
+        assert meta["title"] == "My Title"
+
+    def test_author_field_parsed(self):
+        md = "---\nauthor: Jane Doe\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md)
+        assert meta["author"] == "Jane Doe"
+
+    def test_date_field_parsed(self):
+        md = "---\ndate: 2025-06-01\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md)
+        assert meta["date"] is not None
+
+    def test_tags_field_parsed_as_list(self):
+        md = "---\ntags:\n  - python\n  - web\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md)
+        assert isinstance(meta["tags"], list)
+        assert "python" in meta["tags"]
+
+    def test_draft_field_parsed(self):
+        md = "---\ndraft: true\n---\nContent."
+        meta, _ = ssg.parse_front_matter(md)
+        assert meta["draft"] is True
+
+    def test_malformed_yaml_returns_empty_dict(self):
+        md = "---\n: bad: yaml: {\n---\nContent."
+        meta, body = ssg.parse_front_matter(md)
+        assert meta == {}
+
+    def test_unclosed_front_matter_ignored(self):
+        md = "---\ntitle: Oops\nContent with no closing delimiter."
+        meta, body = ssg.parse_front_matter(md)
+        assert meta == {}
+        assert body == md
+
+
+# ===========================================================================
+# 13. Front matter — integration with convert_md_to_html
+# ===========================================================================
+
+
+class TestFrontMatterIntegration:
+    def test_title_from_front_matter_overrides_h1(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\ntitle: FM Title\n---\n# H1 Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert "FM Title" in html
+
+    def test_description_from_front_matter(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\ndescription: Custom desc.\n---\n# Title\n\nOther text.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert "Custom desc." in html
+
+    def test_author_appears_in_output(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\nauthor: Jane Doe\n---\n# Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert "Jane Doe" in html
+
+    def test_date_appears_in_output(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\ndate: 2025-06-01\n---\n# Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert "2025" in html
+
+    def test_tags_rendered_in_output(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\ntags:\n  - python\n  - web\n---\n# Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert "python" in html
+        assert "web" in html
+
+    def test_keywords_meta_tag_present(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\ntags:\n  - python\n---\n# Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert 'name="keywords"' in html
+
+    def test_author_meta_tag_present(self, tmp_path):
+        src = write(tmp_path / "page.md",
+                    "---\nauthor: Jane\n---\n# Title\n\nContent.")
+        out = tmp_path / "page.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        html = out.read_text()
+        assert 'name="author"' in html
+
+    def test_draft_page_skipped_by_cli(self, tmp_path):
+        write(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        run(str(tmp_path))
+        assert not (tmp_path / "draft.html").exists()
+        assert (tmp_path / "page.html").exists()
+
+    def test_no_front_matter_still_works(self, tmp_path):
+        src = write(tmp_path / "plain.md", "# Plain\n\nNo front matter.")
+        out = tmp_path / "plain.html"
+        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        assert out.exists()
+        html = out.read_text()
+        assert "Plain" in html
