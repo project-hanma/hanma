@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.4.0
+Version: 0.4.2
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 import html
 import json
@@ -982,18 +982,21 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 class _SsgEventHandler(_WatchdogHandler):
     """Watchdog event handler: triggers a debounced rebuild on any relevant change."""
 
-    _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".html", ".css", ".js"}
+    _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".css", ".js"}
 
-    def __init__(self, rebuild_fn, root: Path, theme_dir: Path) -> None:
+    def __init__(self, rebuild_fn, root: Path, theme_dir: Path, output_dir: Optional[Path] = None) -> None:
         super().__init__()
         self._rebuild = rebuild_fn
         self._root = root
         self._theme_dir = theme_dir
+        self._output_dir = output_dir
         self._lock = threading.Lock()
         self._debounce_timer: Optional[threading.Timer] = None
 
     def _is_relevant(self, path: str) -> bool:
         p = Path(path)
+        if self._output_dir and p.is_relative_to(self._output_dir):
+            return False
         return p.suffix.lower() in self._RELEVANT_SUFFIXES
 
     def _schedule_rebuild(self) -> None:
@@ -1069,7 +1072,7 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
         except Exception as exc:
             print(f"  [watch] build error: {exc}")
 
-    handler = _SsgEventHandler(rebuild, root, theme_dir)
+    handler = _SsgEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
     observer = Observer()
     observer.schedule(handler, str(root), recursive=True)
     if theme_dir != root and not theme_dir.is_relative_to(root):

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.4.1 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.4.2 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -141,7 +141,7 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 - `build_search_json(entries, output_root, base_url)` writes `search.json` with `{title, description, url, tags}` per page.
 - `page_needs_rebuild(md_path, out_html, manifest, template_mtime)` returns `True` if the page must be regenerated. Used by `--incremental` mode.
 - Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float}`.
-- `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed.
+- `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed. The event handler ignores events from within `output_dir` and only reacts to source suffixes (`.md`, `.markdown`, `.yaml`, `.css`, `.js`) to prevent build output from triggering a rebuild loop.
 - The entire build pipeline is encapsulated in `_run_build()`, which is called both from `main()` and from the watch rebuild callback.
 
 ## Design Philosophy
