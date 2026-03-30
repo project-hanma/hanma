@@ -141,9 +141,11 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
             body = "\n".join(lines[i + 1:])
             try:
                 meta = yaml.safe_load(yaml_block) or {}
-            except yaml.YAMLError:
+            except yaml.YAMLError as exc:
                 loc = f" in {source_path}" if source_path else ""
                 print(f"Warning: malformed YAML front matter{loc} — metadata ignored", file=sys.stderr)
+                print(f"  Hint: if a value contains a colon, wrap it in quotes — e.g. title: \"My Title: Subtitle\"", file=sys.stderr)
+                print(f"  YAML error: {exc}", file=sys.stderr)
                 meta = {}
             if not isinstance(meta, dict):
                 meta = {}
@@ -1006,8 +1008,12 @@ class _SsgEventHandler(_WatchdogHandler):
             self._debounce_timer = threading.Timer(0.3, self._rebuild)
             self._debounce_timer.start()
 
+    _TRIGGER_TYPES = {"created", "deleted", "modified", "moved"}
+
     def on_any_event(self, event) -> None:
         if getattr(event, "is_directory", False):
+            return
+        if getattr(event, "event_type", None) not in self._TRIGGER_TYPES:
             return
         src = getattr(event, "src_path", "")
         if self._is_relevant(src):

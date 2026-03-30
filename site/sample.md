@@ -1,3 +1,13 @@
+---
+title: "The Linux Command Line: A Practical Guide"
+description: KEK
+author: Chris H.
+date: 2026-03-28
+tags:
+  - broken
+  - linux
+---
+
 # The Linux Command Line: A Practical Guide
 
 A no-nonsense reference for engineers who live in the terminal. This guide

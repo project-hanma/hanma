@@ -1247,6 +1247,17 @@ class TestWatchdogWatch:
         assert handler._is_relevant("file.png") is False
         assert handler._is_relevant("file.txt") is False
 
+    def test_ssg_event_handler_ignores_open_close_events(self, tmp_path):
+        from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
+        triggered = []
+        handler = ssg._SsgEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+        handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
+        handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
+        assert triggered == [], "open/close events must not trigger rebuild"
+        handler.on_any_event(FileModifiedEvent(str(tmp_path / "file.md")))
+        import time; time.sleep(0.4)
+        assert triggered == [1], "modify event must trigger rebuild"
+
     def test_watch_and_rebuild_signature_accepts_base_url(self, tmp_path):
         import inspect
         sig = inspect.signature(ssg.watch_and_rebuild)
