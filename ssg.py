@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.4.2
+Version: 0.4.3
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 import html
 import json
@@ -307,10 +307,29 @@ def _normalize_tag(tag: str) -> str:
     return re.sub(r"[^\w-]", "-", str(tag).lower()).strip("-")
 
 
+def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str) -> str:
+    """Return the URL to search.json as seen from out_path.
+
+    Uses an absolute URL when base_url is set, otherwise computes a relative
+    path from out_path back to output_root/search.json.
+    """
+    if base_url:
+        return base_url.rstrip("/") + "/search.json"
+    if output_root is None:
+        return "search.json"
+    try:
+        depth = len(out_path.relative_to(output_root).parts) - 1
+    except ValueError:
+        depth = 0
+    return ("../" * depth) + "search.json"
+
+
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                        nav_pages: Optional[list] = None,
                        template: Optional[string.Template] = None,
-                       tags_out_dir: Optional[Path] = None) -> Path:
+                       tags_out_dir: Optional[Path] = None,
+                       base_url: str = "",
+                       output_root: Optional[Path] = None) -> Path:
     """Read a .md file and write the HTML output to out_path.
 
     nav_pages is a list of (out_html_path, title) tuples for every page being
@@ -319,6 +338,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     the built-in default theme when not supplied.
     tags_out_dir is the output directory for tag index pages; when provided,
     tag names in the tag strip become clickable links.
+    base_url and output_root are used to compute sitemap_link and
+    search_json_url template variables.
     """
     if template is None:
         template, _ = load_theme("default")
@@ -420,6 +441,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
     source_rel = md_path.name
 
+    sitemap_link = '<a href="sitemap.xml">Sitemap</a>' if base_url else ""
+    search_url = _search_json_url(out_path, output_root, base_url)
+
     page_html = template.substitute(
         title=html.escape(title),
         description=html.escape(description),
@@ -433,6 +457,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
         source_file=source_rel,
         last_updated=last_updated,
         HIGHLIGHT_CSS=HIGHLIGHT_CSS,
+        sitemap_link=sitemap_link,
+        search_json_url=search_url,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -519,7 +545,9 @@ def copy_static_assets(source_root: Path, output_root: Path) -> None:
 def _make_generated_page(content_html: str, title: str, description: str,
                           out_path: Path, site_name: str,
                           nav_pages: list[tuple],
-                          template: string.Template) -> Path:
+                          template: string.Template,
+                          sitemap_link: str = "",
+                          search_json_url: str = "search.json") -> Path:
     """Render a generated (non-markdown) page using the active theme template."""
     nav_html = build_nav_html(out_path, "", nav_pages)
     now = datetime.now()
@@ -536,6 +564,8 @@ def _make_generated_page(content_html: str, title: str, description: str,
         source_file="(generated)",
         last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
         HIGHLIGHT_CSS=HIGHLIGHT_CSS,
+        sitemap_link=sitemap_link,
+        search_json_url=search_json_url,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page_html, encoding="utf-8")
@@ -544,7 +574,9 @@ def _make_generated_page(content_html: str, title: str, description: str,
 
 def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
                           site_name: str, nav_pages: list[tuple],
-                          template: string.Template) -> Path:
+                          template: string.Template,
+                          base_url: str = "",
+                          output_root: Optional[Path] = None) -> Path:
     """Generate a tag index page listing all pages tagged with tag.
 
     pages is a list of (out_html_path, title, date_str) tuples, sorted by date.
@@ -569,13 +601,17 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
     )
     return _make_generated_page(
         content_html, f'Tag: {tag}', f'Pages tagged {tag}',
-        out_path, site_name, nav_pages, template
+        out_path, site_name, nav_pages, template,
+        sitemap_link='<a href="../sitemap.xml">Sitemap</a>' if base_url else "",
+        search_json_url=_search_json_url(out_path, output_root, base_url),
     )
 
 
 def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                               site_name: str, nav_pages: list[tuple],
-                              template: string.Template) -> Path:
+                              template: string.Template,
+                              base_url: str = "",
+                              output_root: Optional[Path] = None) -> Path:
     """Generate posts.html listing all pages with a date field, newest first.
 
     dated_pages is a list of (out_html_path, title, date_obj, description) tuples.
@@ -604,7 +640,9 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
     content_html = f'<h1>All Posts</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
     return _make_generated_page(
         content_html, "All Posts", "A chronological listing of all posts.",
-        out_path, site_name, nav_pages, template
+        out_path, site_name, nav_pages, template,
+        sitemap_link='<a href="sitemap.xml">Sitemap</a>' if base_url else "",
+        search_json_url=_search_json_url(out_path, output_root, base_url),
     )
 
 
@@ -886,6 +924,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
                 md_path, out_html, site_name,
                 nav_pages=nav_pages, template=template,
                 tags_out_dir=tags_out_dir,
+                base_url=base_url, output_root=output_dir,
             )
             print(f"  ✓  {rel}  →  {out}")
             ok += 1
@@ -929,7 +968,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
             return (1, datetime.min)
         tag_pages_sorted = sorted(tag_pages, key=_sort_key, reverse=True)
         try:
-            build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template)
+            build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
+                             base_url=base_url, output_root=output_dir)
             print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
         except Exception as exc:
             print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
@@ -938,7 +978,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     # ── Generate posts listing page ───────────────────────────────────────
     if dated_pages and not posts_collision:
         try:
-            build_posts_listing_html(dated_pages, posts_out, site_name, nav_pages, template)
+            build_posts_listing_html(dated_pages, posts_out, site_name, nav_pages, template,
+                                     base_url=base_url, output_root=output_dir)
             print(f"  [posts] posts.html  ({len(dated_pages)} post(s))")
         except Exception as exc:
             print(f"  [posts] ERROR generating posts.html: {exc}")
@@ -1310,6 +1351,7 @@ Examples:
     manifest_path = output_dir / ".ssg_manifest.json" if effective_incremental else None
 
     # ── Run the build ─────────────────────────────────────────────────────
+    print(f"Building '{site_name}'  →  {output_dir}\n")
     # Collect all_files for post-build serve logic
     _files = find_markdown_files(root)
     # Build a quick list for serve URL resolution
@@ -1351,6 +1393,7 @@ Examples:
             return
 
     if effective_serve:
+        print("\nStarting server…")
         _serve(output_dir, effective_port, _all_files_preview)
 
 
