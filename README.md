@@ -207,7 +207,7 @@ All fields are optional. When present they take effect as follows:
 
 | Field | Type | Effect |
 |---|---|---|
-| `title` | string | Overrides the auto-extracted H1 heading |
+| `title` | string | Overrides the auto-extracted H1 heading; prepended with the site name in the browser title |
 | `description` | string | Overrides the auto-extracted first paragraph |
 | `author` | string | Shown in the page footer; added as `<meta name="author">` |
 | `date` | YYYY-MM-DD | Shown in the page footer alongside the author |
@@ -260,7 +260,7 @@ Available variables in `template.html`:
 
 | Variable | Content |
 |---|---|
-| `$title` | Page title |
+| `$title` | Browser title (automatically prepended with site name) |
 | `$description` | Page description (meta) |
 | `$site_name` | Site name from `--name` |
 | `$date_str` | Today's date |
