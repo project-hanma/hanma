@@ -1,0 +1,13 @@
+{
+  "css.validate": true,
+  "files.associations": {
+    "**/themes/*/template.html": "html"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "vscode.html-language-features"
+  },
+  "css.customData": [],
+  // Disable embedded CSS validation in ssg theme templates — they contain
+  // string.Template placeholders (e.g. $HIGHLIGHT_CSS) that are not valid CSS.
+  "html.validate.styles": false
+}
