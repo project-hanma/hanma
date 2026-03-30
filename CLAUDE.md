@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.4.2 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.4.3 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -114,7 +114,7 @@ Themes live in `themes/<name>/` alongside `ssg.py`. Each theme directory contain
 - `template.html` — required; uses `string.Template` `$variable` syntax
 - Any other files (CSS, images, fonts, etc.) are copied to the output root at generation time
 
-Available template variables: `$title`, `$description`, `$author_meta`, `$keywords_meta`, `$author_line`, `$site_name`, `$date_str`, `$nav`, `$content`, `$source_file`, `$last_updated`, `$HIGHLIGHT_CSS`
+Available template variables: `$title`, `$description`, `$author_meta`, `$keywords_meta`, `$author_line`, `$site_name`, `$date_str`, `$nav`, `$content`, `$source_file`, `$last_updated`, `$HIGHLIGHT_CSS`, `$sitemap_link`, `$search_json_url`
 
 Select a theme with `--theme NAME` (default: `default`). The `themes/default/` theme is the canonical reference implementation.
 
@@ -137,8 +137,9 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 - `_normalize_tag(tag)` converts a tag string to a filesystem-safe slug (e.g. `"my tag"` → `"my-tag"`).
 - `build_tag_index_html(tag, pages, ...)` generates `tags/<slug>.html` listing all pages with that tag.
 - `build_posts_listing_html(dated_pages, ...)` generates `posts.html` sorted newest-first. Skipped if `posts.md` exists as a source file.
-- `build_sitemap_xml(pages, output_root, base_url)` writes `sitemap.xml`; returns `None` and does nothing when `base_url` is empty.
-- `build_search_json(entries, output_root, base_url)` writes `search.json` with `{title, description, url, tags}` per page.
+- `build_sitemap_xml(pages, output_root, base_url)` writes `sitemap.xml`; returns `None` and does nothing when `base_url` is empty. A "Sitemap" link is also injected into the footer of every generated page via `$sitemap_link` (empty string when `base_url` is unset).
+- `build_search_json(entries, output_root, base_url)` writes `search.json` with `{title, description, url, tags}` per page. The default theme includes a client-side search box in the header that lazily fetches `search.json` on first keystroke and filters results inline — no server required. The URL is injected per-page as `$search_json_url` (relative path accounting for subdirectory depth, or absolute when `base_url` is set).
+- `_search_json_url(out_path, output_root, base_url)` computes the correct URL to `search.json` as seen from a given output page.
 - `page_needs_rebuild(md_path, out_html, manifest, template_mtime)` returns `True` if the page must be regenerated. Used by `--incremental` mode.
 - Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float}`.
 - `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed. The event handler ignores events from within `output_dir` and only reacts to source suffixes (`.md`, `.markdown`, `.yaml`, `.css`, `.js`) to prevent build output from triggering a rebuild loop.
