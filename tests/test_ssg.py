@@ -1242,7 +1242,7 @@ class TestWatchdogWatch:
     def test_ssg_event_handler_relevance(self, tmp_path):
         handler = ssg._SsgEventHandler(lambda: None, tmp_path, tmp_path)
         assert handler._is_relevant("file.md") is True
-        assert handler._is_relevant("file.html") is True
+        assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
         assert handler._is_relevant("file.yaml") is True
         assert handler._is_relevant("file.png") is False
         assert handler._is_relevant("file.txt") is False
