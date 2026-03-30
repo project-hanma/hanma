@@ -1,6 +1,8 @@
 .venv
+.claude
 output
 __pycache__
 .pytest_cache
 repository_audit.md
 repository_audit_claude.md
+conf/test.yml

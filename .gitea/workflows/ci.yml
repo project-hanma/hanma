@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["develop", "cr1"]
+    branches: ["develop", "cr1", "feat_req_0329"]
   pull_request:
-    branches: ["develop", "cr1"]
+    branches: ["develop", "cr1", "feat_req_0329"]
 
 jobs:
   test:
@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install markdown pygments pymdown-extensions pyyaml pytest --break-system-packages
+          python3 -m pip install markdown pygments pymdown-extensions pyyaml watchdog pytest --break-system-packages
 
       - name: Check syntax (py_compile)
         run: python3 -m py_compile ssg.py && echo "Syntax OK"

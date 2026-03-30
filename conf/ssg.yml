@@ -1,0 +1,30 @@
+# ssg.yml — default site configuration
+# All values here can be overridden by CLI flags.
+# Comment out any line to revert to the built-in default for that setting.
+
+# Site name shown in the page header
+name: Blog
+
+# Base URL for sitemap.xml and absolute URLs in search.json.
+# Leave empty to use relative URLs (sitemap.xml will not be generated).
+# Example: https://example.com
+base_url: ""
+
+# Output directory for generated HTML (relative to ssg.py, or absolute).
+# Default when unset: output/ relative to ssg.py
+output: output/
+
+# Theme to use from the themes/ directory.
+theme: default
+
+# Start the local HTTP server after generating.
+# serve: false
+
+# Port for the local HTTP server (only used when serve is true).
+# port: 8000
+
+# Watch source files and regenerate on changes after the initial build.
+# watch: false
+
+# Only regenerate pages whose source file has changed since the last build.
+# incremental: false
