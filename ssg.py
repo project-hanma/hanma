@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.3.2
+Version: 0.4.0
 
 Usage:
     python ssg.py [directory]
@@ -13,12 +13,13 @@ All .md files found in the directory tree are converted to .html
 files written alongside the source .md file.
 
 Dependencies:
-    pip install markdown pygments pyyaml
+    pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.1"
 
 import html
+import json
 import os
 import sys
 import re
@@ -46,7 +47,7 @@ try:
     from markdown.extensions.meta import MetaExtension
 except ImportError:
     print("Error: 'markdown' package not found.")
-    print("Install it with:  pip install markdown pygments pyyaml")
+    print("Install it with:  pip install markdown pygments pyyaml watchdog")
     sys.exit(1)
 
 try:
@@ -55,6 +56,14 @@ except ImportError:
     print("Error: 'pyyaml' package not found.")
     print("Install it with:  pip install pyyaml")
     sys.exit(1)
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler as _WatchdogHandler
+    _WATCHDOG_AVAILABLE = True
+except ImportError:
+    _WATCHDOG_AVAILABLE = False
+    _WatchdogHandler = object  # fallback base class
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +152,28 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SITE CONFIG FILE (ssg.yml)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_site_config(config_path: Path) -> dict:
+    """Load ssg.yml (or ssg.yaml) from config_path. Returns {} if absent or invalid.
+
+    Recognized fields: name, base_url, output, theme, serve, port, watch, incremental.
+    """
+    if not config_path.is_file():
+        return {}
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        print(f"Warning: could not parse {config_path}: {exc}", file=sys.stderr)
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    allowed = {"name", "base_url", "output", "theme", "serve", "port", "watch", "incremental"}
+    return {k: v for k, v in raw.items() if k in allowed}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # THEME LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -189,7 +220,6 @@ def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
             if dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(src, dest)
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -270,15 +300,23 @@ def collect_page_info(md_path: Path) -> tuple:
     return title, description, front
 
 
+def _normalize_tag(tag: str) -> str:
+    """Produce a filesystem-safe slug from a tag name."""
+    return re.sub(r"[^\w-]", "-", str(tag).lower()).strip("-")
+
+
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                        nav_pages: Optional[list] = None,
-                       template: Optional[string.Template] = None) -> Path:
+                       template: Optional[string.Template] = None,
+                       tags_out_dir: Optional[Path] = None) -> Path:
     """Read a .md file and write the HTML output to out_path.
 
     nav_pages is a list of (out_html_path, title) tuples for every page being
     generated, used to build the cross-page navigation bar.
     template is a string.Template loaded from the active theme; defaults to
     the built-in default theme when not supplied.
+    tags_out_dir is the output directory for tag index pages; when provided,
+    tag names in the tag strip become clickable links.
     """
     if template is None:
         template, _ = load_theme("default")
@@ -344,8 +382,24 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
     # Append tag strip to content if tags are present
     if isinstance(fm_tags, list) and fm_tags:
-        tag_items = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in fm_tags)
-        content_html += f'\n<div class="page-tags">{tag_items}</div>'
+        tag_items_html = []
+        for t in fm_tags:
+            tag_text = html.escape(str(t))
+            if tags_out_dir is not None:
+                slug = _normalize_tag(str(t))
+                tag_html_path = tags_out_dir / f"{slug}.html"
+                try:
+                    rel_url = html.escape(
+                        os.path.relpath(tag_html_path, out_path.parent), quote=True
+                    )
+                except ValueError:
+                    rel_url = f"tags/{slug}.html"
+                tag_items_html.append(
+                    f'<a class="tag" href="{rel_url}">{tag_text}</a>'
+                )
+            else:
+                tag_items_html.append(f'<span class="tag">{tag_text}</span>')
+        content_html += f'\n<div class="page-tags">{"".join(tag_items_html)}</div>'
 
     # Extract TOC inner HTML (strip the outer <div class="toc"> wrapper)
     toc_html = getattr(md, "toc", "")
@@ -359,7 +413,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
     now = datetime.now()
     date_str = now.strftime("%B %d, %Y")
-    generated_at = now.strftime("%H:%M %m/%d/%Y")
 
     mtime = datetime.fromtimestamp(md_path.stat().st_mtime)
     last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
@@ -438,18 +491,531 @@ def find_markdown_files(root: Path) -> list[Path]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# WATCH MODE
+# STATIC ASSET PASSTHROUGH
 # ─────────────────────────────────────────────────────────────────────────────
 
-def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
-                      template: string.Template,
-                      poll_interval: float = 1.0) -> None:
-    """Poll source .md files for changes and regenerate on modifications.
+def copy_static_assets(source_root: Path, output_root: Path) -> None:
+    """Copy <source_root>/static/ to <output_root>/static/ unchanged.
 
-    Runs until KeyboardInterrupt.  On any change the affected file is
-    regenerated and the full nav is rebuilt (nav is global across all pages).
+    Does nothing if no static/ directory exists in source_root.
     """
-    print(f"Watching {root} for changes (Ctrl+C to stop)...\n")
+    static_src = source_root / "static"
+    if not static_src.is_dir():
+        return
+    static_dest = output_root / "static"
+    if static_dest.exists():
+        shutil.rmtree(static_dest)
+    shutil.copytree(static_src, static_dest)
+    count = sum(1 for _ in static_dest.rglob("*") if _.is_file())
+    print(f"  [static] copied {count} file(s) from static/")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GENERATED PAGES (tag indexes, post listing)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_generated_page(content_html: str, title: str, description: str,
+                          out_path: Path, site_name: str,
+                          nav_pages: list[tuple],
+                          template: string.Template) -> Path:
+    """Render a generated (non-markdown) page using the active theme template."""
+    nav_html = build_nav_html(out_path, "", nav_pages)
+    now = datetime.now()
+    page_html = template.substitute(
+        title=html.escape(title),
+        description=html.escape(description),
+        author_meta="",
+        keywords_meta="",
+        author_line="",
+        site_name=html.escape(site_name),
+        date_str=now.strftime("%B %d, %Y"),
+        content=content_html,
+        nav=nav_html,
+        source_file="(generated)",
+        last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
+        HIGHLIGHT_CSS=HIGHLIGHT_CSS,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(page_html, encoding="utf-8")
+    return out_path
+
+
+def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
+                          site_name: str, nav_pages: list[tuple],
+                          template: string.Template) -> Path:
+    """Generate a tag index page listing all pages tagged with tag.
+
+    pages is a list of (out_html_path, title, date_str) tuples, sorted by date.
+    """
+    safe_tag = html.escape(tag)
+    items = []
+    for page_html_path, page_title, date_str in pages:
+        try:
+            rel_url = html.escape(
+                os.path.relpath(page_html_path, out_path.parent), quote=True
+            )
+        except ValueError:
+            rel_url = page_html_path.as_posix()
+        safe_title = html.escape(page_title)
+        date_span = f' <span class="post-date">{html.escape(date_str)}</span>' if date_str else ""
+        items.append(f'  <li><a href="{rel_url}">{safe_title}</a>{date_span}</li>')
+
+    items_html = "\n".join(items) if items else "  <li><em>No pages found.</em></li>"
+    content_html = (
+        f'<h1>Pages tagged &#8220;<em>{safe_tag}</em>&#8221;</h1>\n'
+        f'<ul class="tag-index">\n{items_html}\n</ul>'
+    )
+    return _make_generated_page(
+        content_html, f'Tag: {tag}', f'Pages tagged {tag}',
+        out_path, site_name, nav_pages, template
+    )
+
+
+def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
+                              site_name: str, nav_pages: list[tuple],
+                              template: string.Template) -> Path:
+    """Generate posts.html listing all pages with a date field, newest first.
+
+    dated_pages is a list of (out_html_path, title, date_obj, description) tuples.
+    """
+    # Sort newest first
+    sorted_pages = sorted(dated_pages, key=lambda t: t[2], reverse=True)
+    items = []
+    for page_html_path, page_title, date_obj, description in sorted_pages:
+        try:
+            rel_url = html.escape(
+                os.path.relpath(page_html_path, out_path.parent), quote=True
+            )
+        except ValueError:
+            rel_url = page_html_path.as_posix()
+        safe_title = html.escape(page_title)
+        date_str = html.escape(date_obj.strftime("%B %d, %Y"))
+        desc_html = f'\n    <p class="post-desc">{html.escape(description)}</p>' if description else ""
+        items.append(
+            f'  <li>\n'
+            f'    <a href="{rel_url}">{safe_title}</a>'
+            f' <span class="post-date">{date_str}</span>'
+            f'{desc_html}\n  </li>'
+        )
+
+    items_html = "\n".join(items) if items else "  <li><em>No posts found.</em></li>"
+    content_html = f'<h1>All Posts</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
+    return _make_generated_page(
+        content_html, "All Posts", "A chronological listing of all posts.",
+        out_path, site_name, nav_pages, template
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIDECAR FILES (sitemap.xml, search.json)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_sitemap_xml(pages: list[tuple], output_root: Path, base_url: str) -> Optional[Path]:
+    """Write sitemap.xml to output_root. Returns None if base_url is empty.
+
+    pages is a list of (out_html_path, lastmod_date_str) tuples.
+    base_url must be an absolute URL, e.g. https://example.com
+    """
+    if not base_url:
+        return None
+    base = base_url.rstrip("/")
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for page_path, lastmod in pages:
+        try:
+            rel = page_path.relative_to(output_root).as_posix()
+        except ValueError:
+            rel = page_path.name
+        loc = html.escape(f"{base}/{rel}")
+        lastmod_esc = html.escape(lastmod)
+        lines.append(f"  <url>\n    <loc>{loc}</loc>\n    <lastmod>{lastmod_esc}</lastmod>\n  </url>")
+    lines.append("</urlset>")
+    out = output_root / "sitemap.xml"
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out
+
+
+def build_search_json(entries: list[dict], output_root: Path,
+                      base_url: str = "") -> Path:
+    """Write search.json to output_root.
+
+    Each entry: {title, description, url, tags}
+    url is relative from output_root when base_url is empty,
+    or an absolute URL when base_url is provided.
+    """
+    base = base_url.rstrip("/") if base_url else ""
+    normalized = []
+    for entry in entries:
+        url = entry.get("url", "")
+        if base and url:
+            url = f"{base}/{url}"
+        normalized.append({
+            "title": entry.get("title", ""),
+            "description": entry.get("description", ""),
+            "url": url,
+            "tags": entry.get("tags", []),
+        })
+    out = output_root / "search.json"
+    out.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n",
+                   encoding="utf-8")
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUILD MANIFEST (incremental builds)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MANIFEST_TEMPLATE_KEY = "_template_mtime"
+
+
+def load_build_manifest(manifest_path: Path) -> dict:
+    """Load JSON manifest mapping str(md_path) -> mtime float. Returns {} on miss."""
+    if not manifest_path.is_file():
+        return {}
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_build_manifest(manifest_path: Path, manifest: dict) -> None:
+    """Persist the manifest dict as JSON to manifest_path."""
+    try:
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"  [manifest] warning: could not save {manifest_path}: {exc}", file=sys.stderr)
+
+
+def page_needs_rebuild(md_path: Path, out_html: Path, manifest: dict,
+                        template_mtime: float) -> bool:
+    """Return True if md_path should be regenerated.
+
+    Triggers rebuild if:
+    - out_html does not exist
+    - md_path mtime differs from manifest entry
+    - template_mtime is newer than the manifest's recorded template_mtime
+    """
+    if not out_html.exists():
+        return True
+    if str(md_path) not in manifest:
+        return True
+    try:
+        if md_path.stat().st_mtime != manifest[str(md_path)]:
+            return True
+    except OSError:
+        return True
+    if template_mtime > manifest.get(_MANIFEST_TEMPLATE_KEY, 0.0):
+        return True
+    return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORE BUILD LOGIC
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _run_build(root: Path, output_dir: Path, site_name: str,
+               template: string.Template, theme_dir: Path,
+               base_url: str = "", incremental: bool = False,
+               manifest_path: Optional[Path] = None,
+               dry_run: bool = False) -> tuple[int, int, int]:
+    """Run a full site build. Returns (ok, errors, skipped)."""
+
+    files = find_markdown_files(root)
+    if not files:
+        print(f"No Markdown files found under: {root}")
+        return 0, 0, 0
+
+    print(f"Found {len(files)} Markdown file(s)\n")
+
+    # ── Load build manifest for incremental builds ────────────────────────
+    manifest: dict = {}
+    template_mtime = 0.0
+    if incremental and manifest_path is not None:
+        manifest = load_build_manifest(manifest_path)
+        template_html = theme_dir / "template.html"
+        try:
+            template_mtime = template_html.stat().st_mtime
+        except OSError:
+            pass
+
+    # ── Pass 1: collect titles, output paths, and derived data ───────────
+    all_files: list[tuple] = []
+    drafts = 0
+    tags_map: dict[str, list] = {}      # tag -> [(out_html, title, date_str)]
+    dated_pages: list[tuple] = []       # [(out_html, title, date_obj, description)]
+    search_entries: list[dict] = []
+
+    for md_path in files:
+        title, description, front = collect_page_info(md_path)
+        if front.get("draft") is True:
+            print(f"  [draft] skipping {md_path.name}")
+            drafts += 1
+            continue
+        if md_path.stem.lower() == "index":
+            title = "Home"
+        rel = md_path.relative_to(root)
+        out_html = output_dir / rel.with_suffix(".html")
+        all_files.append((md_path, out_html, title))
+
+        # Collect tags
+        fm_tags = front.get("tags", [])
+        if isinstance(fm_tags, list):
+            for tag in fm_tags:
+                tag_str = str(tag)
+                # Parse date for sorted tag listing
+                date_str = ""
+                fm_date_raw = front.get("date")
+                if fm_date_raw is not None:
+                    try:
+                        if isinstance(fm_date_raw, str):
+                            d = datetime.strptime(fm_date_raw, "%Y-%m-%d")
+                        else:
+                            d = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
+                        date_str = d.strftime("%B %d, %Y")
+                    except (ValueError, AttributeError):
+                        pass
+                tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
+
+        # Collect dated pages for posts listing
+        fm_date_raw = front.get("date")
+        if fm_date_raw is not None:
+            try:
+                if isinstance(fm_date_raw, str):
+                    date_obj = datetime.strptime(fm_date_raw, "%Y-%m-%d")
+                else:
+                    date_obj = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
+                dated_pages.append((out_html, title, date_obj, description))
+            except (ValueError, AttributeError):
+                pass
+
+        # Collect search entry
+        try:
+            url_rel = out_html.relative_to(output_dir).as_posix()
+        except ValueError:
+            url_rel = out_html.name
+        search_entries.append({
+            "title": title,
+            "description": description,
+            "url": url_rel,
+            "tags": [str(t) for t in fm_tags] if isinstance(fm_tags, list) else [],
+        })
+
+    # index.html always listed first, everything else in discovery order
+    all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
+
+    # Single-file invocations get no cross-page nav (nothing to link to)
+    nav_pages = [(out_html, title) for _, out_html, title in all_files] if len(all_files) > 1 else []
+
+    # Compute tags output directory
+    tags_out_dir = output_dir / "tags"
+
+    # ── Compute expected HTML (includes generated pages) ─────────────────
+    expected_html: set[Path] = {out_html for _, out_html, _ in all_files}
+
+    # Tag index pages
+    tag_out_paths: dict[str, Path] = {}
+    for tag in tags_map:
+        slug = _normalize_tag(tag)
+        tag_out_path = tags_out_dir / f"{slug}.html"
+        tag_out_paths[tag] = tag_out_path
+        expected_html.add(tag_out_path)
+
+    # Posts listing page (skip if posts.md already exists as a source)
+    posts_out = output_dir / "posts.html"
+    posts_collision = any(out_html == posts_out for _, out_html, _ in all_files)
+    if dated_pages and not posts_collision:
+        expected_html.add(posts_out)
+
+    # Search index and sitemap are not HTML so not added to expected_html
+
+    # ── Copy theme assets to output root ─────────────────────────────────
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        copy_theme_assets(theme_dir, output_dir)
+
+    # ── Copy static assets ────────────────────────────────────────────────
+    if not dry_run:
+        copy_static_assets(root, output_dir)
+
+    # ── Remove stale HTML files with no corresponding source ──────────────
+    if not dry_run and output_dir.is_dir():
+        stale = clean_stale_html(output_dir, expected_html)
+        for path in stale:
+            try:
+                rel = path.relative_to(output_dir)
+            except ValueError:
+                rel = path
+            print(f"  [clean] removed stale {rel}")
+
+    ok = 0
+    errors = 0
+    skipped = 0
+
+    # ── Pass 2: generate HTML with full nav ───────────────────────────────
+    for md_path, out_html, _title in all_files:
+        try:
+            rel = md_path.relative_to(root)
+        except ValueError:
+            rel = md_path
+
+        if dry_run:
+            try:
+                out_rel = out_html.relative_to(Path.cwd())
+            except ValueError:
+                out_rel = out_html
+            print(f"  [dry-run] {rel}  →  {out_rel}")
+            continue
+
+        # Incremental skip check
+        if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime):
+            try:
+                out_rel = out_html.relative_to(output_dir)
+            except ValueError:
+                out_rel = out_html
+            print(f"  [skip]  {rel}  (unchanged)")
+            skipped += 1
+            ok += 1
+            continue
+
+        try:
+            out = convert_md_to_html(
+                md_path, out_html, site_name,
+                nav_pages=nav_pages, template=template,
+                tags_out_dir=tags_out_dir,
+            )
+            print(f"  ✓  {rel}  →  {out}")
+            ok += 1
+            if incremental and manifest_path is not None:
+                try:
+                    manifest[str(md_path)] = md_path.stat().st_mtime
+                except OSError:
+                    pass
+        except Exception as exc:
+            print(f"  ✗  {rel}  →  ERROR: {exc}")
+            errors += 1
+
+    if dry_run:
+        # Show what generated pages would be created
+        if tags_map:
+            for tag, slug_path in tag_out_paths.items():
+                try:
+                    out_rel = slug_path.relative_to(Path.cwd())
+                except ValueError:
+                    out_rel = slug_path
+                print(f"  [dry-run] (tag index) tags/{_normalize_tag(tag)}.html  →  {out_rel}")
+        if dated_pages and not posts_collision:
+            try:
+                pr = posts_out.relative_to(Path.cwd())
+            except ValueError:
+                pr = posts_out
+            print(f"  [dry-run] (posts listing) posts.html  →  {pr}")
+        return ok, errors, skipped
+
+    # ── Generate tag index pages ──────────────────────────────────────────
+    for tag, tag_pages in tags_map.items():
+        tag_out = tag_out_paths[tag]
+        # Sort tag pages: dated entries first (by date desc), then undated alphabetically
+        def _sort_key(entry):
+            _, _, date_str = entry
+            if date_str:
+                try:
+                    return (0, datetime.strptime(date_str, "%B %d, %Y"))
+                except ValueError:
+                    pass
+            return (1, datetime.min)
+        tag_pages_sorted = sorted(tag_pages, key=_sort_key, reverse=True)
+        try:
+            build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template)
+            print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
+        except Exception as exc:
+            print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
+            errors += 1
+
+    # ── Generate posts listing page ───────────────────────────────────────
+    if dated_pages and not posts_collision:
+        try:
+            build_posts_listing_html(dated_pages, posts_out, site_name, nav_pages, template)
+            print(f"  [posts] posts.html  ({len(dated_pages)} post(s))")
+        except Exception as exc:
+            print(f"  [posts] ERROR generating posts.html: {exc}")
+            errors += 1
+    elif posts_collision:
+        print("  [posts] skipped: posts.md exists as source file")
+
+    # ── Generate sitemap.xml ──────────────────────────────────────────────
+    if base_url:
+        sitemap_pages = []
+        for _, out_html, _ in all_files:
+            try:
+                mtime = out_html.stat().st_mtime
+                lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+            except OSError:
+                lastmod = datetime.now().strftime("%Y-%m-%d")
+            sitemap_pages.append((out_html, lastmod))
+        sitemap_path = build_sitemap_xml(sitemap_pages, output_dir, base_url)
+        if sitemap_path:
+            print(f"  [sitemap] sitemap.xml  ({len(sitemap_pages)} URL(s))")
+
+    # ── Generate search.json ──────────────────────────────────────────────
+    search_path = build_search_json(search_entries, output_dir, base_url)
+    print(f"  [search] search.json  ({len(search_entries)} entry/entries)")
+
+    # ── Save build manifest ───────────────────────────────────────────────
+    if incremental and manifest_path is not None:
+        manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
+        save_build_manifest(manifest_path, manifest)
+
+    if not dry_run:
+        draft_note = f", {drafts} draft(s) skipped" if drafts else ""
+        skip_note = f", {skipped} skipped (unchanged)" if skipped else ""
+        print(f"\nDone.  {ok} converted{skip_note}{draft_note}, {errors} errors.")
+
+    return ok, errors, skipped
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WATCH MODE (watchdog-based)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _SsgEventHandler(_WatchdogHandler):
+    """Watchdog event handler: triggers a debounced rebuild on any relevant change."""
+
+    _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".html", ".css", ".js"}
+
+    def __init__(self, rebuild_fn, root: Path, theme_dir: Path) -> None:
+        super().__init__()
+        self._rebuild = rebuild_fn
+        self._root = root
+        self._theme_dir = theme_dir
+        self._lock = threading.Lock()
+        self._debounce_timer: Optional[threading.Timer] = None
+
+    def _is_relevant(self, path: str) -> bool:
+        p = Path(path)
+        return p.suffix.lower() in self._RELEVANT_SUFFIXES
+
+    def _schedule_rebuild(self) -> None:
+        with self._lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+            self._debounce_timer = threading.Timer(0.3, self._rebuild)
+            self._debounce_timer.start()
+
+    def on_any_event(self, event) -> None:
+        if getattr(event, "is_directory", False):
+            return
+        src = getattr(event, "src_path", "")
+        if self._is_relevant(src):
+            self._schedule_rebuild()
+
+
+def _watch_polling(root: Path, output_dir: Path, site_name: str,
+                   template: string.Template, theme_dir: Path,
+                   base_url: str = "", poll_interval: float = 1.0) -> None:
+    """Fallback polling-based watch (used when watchdog is not available)."""
+    print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
     def get_mtimes(file_list: list) -> dict:
         mtimes = {}
@@ -460,23 +1026,6 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
                 pass
         return mtimes
 
-    def build_all_files(file_list: list) -> list:
-        result = []
-        for md_path in file_list:
-            title, _, front = collect_page_info(md_path)
-            if front.get("draft") is True:
-                continue
-            if md_path.stem.lower() == "index":
-                title = "Home"
-            if output_dir is not None:
-                rel = md_path.relative_to(root)
-                out_html = output_dir / rel.with_suffix(".html")
-            else:
-                out_html = md_path.with_suffix(".html")
-            result.append((md_path, out_html, title))
-        result.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
-        return result
-
     files = find_markdown_files(root)
     last_mtimes = get_mtimes(files)
 
@@ -485,46 +1034,55 @@ def watch_and_rebuild(root: Path, output_dir: Optional[Path], site_name: str,
             time.sleep(poll_interval)
             current_files = find_markdown_files(root)
             current_mtimes = get_mtimes(current_files)
-
             deleted = set(files) - set(current_files)
             changed = [p for p in current_files
                        if current_mtimes.get(p) != last_mtimes.get(p)]
-
             if changed or deleted:
-                all_files = build_all_files(current_files)
-                nav_pages = ([(out_html, title) for _, out_html, title in all_files]
-                             if len(all_files) > 1 else [])
-
-                # Regenerate modified/new files
-                for md_path in changed:
-                    entry = next((e for e in all_files if e[0] == md_path), None)
-                    if entry is None:
-                        continue
-                    _, out_html, _ = entry
-                    try:
-                        convert_md_to_html(md_path, out_html, site_name, nav_pages=nav_pages, template=template)
-                        print(f"  [watch] regenerated {md_path.name}")
-                    except FileNotFoundError:
-                        print(f"  [watch] {md_path.name} removed, skipping")
-                    except Exception as exc:
-                        print(f"  [watch] ERROR {md_path.name}: {exc}")
-
-                # Remove HTML for deleted source files
-                if deleted and output_dir is not None and output_dir.is_dir():
-                    expected = {out_html for _, out_html, _ in all_files}
-                    stale = clean_stale_html(output_dir, expected)
-                    for path in stale:
-                        try:
-                            rel = path.relative_to(output_dir)
-                        except ValueError:
-                            rel = path
-                        print(f"  [watch] removed stale {rel}")
-
-                last_mtimes = current_mtimes
-                files = current_files
-
+                print(f"\n  [watch] change detected, rebuilding...")
+                _run_build(root, output_dir, site_name, template, theme_dir,
+                           base_url=base_url)
+            last_mtimes = current_mtimes
+            files = current_files
     except KeyboardInterrupt:
         print("\nWatch stopped.")
+
+
+def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
+                      template: string.Template, theme_dir: Path,
+                      base_url: str = "",
+                      poll_interval: float = 1.0) -> None:
+    """Watch source files and regenerate on changes.
+
+    Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
+    polling when watchdog is not installed.
+    """
+    if not _WATCHDOG_AVAILABLE:
+        _watch_polling(root, output_dir, site_name, template, theme_dir,
+                       base_url=base_url, poll_interval=poll_interval)
+        return
+
+    def rebuild():
+        print(f"\n  [watch] change detected, rebuilding...")
+        try:
+            _run_build(root, output_dir, site_name, template, theme_dir,
+                       base_url=base_url)
+        except Exception as exc:
+            print(f"  [watch] build error: {exc}")
+
+    handler = _SsgEventHandler(rebuild, root, theme_dir)
+    observer = Observer()
+    observer.schedule(handler, str(root), recursive=True)
+    if theme_dir != root and not theme_dir.is_relative_to(root):
+        observer.schedule(handler, str(theme_dir), recursive=True)
+    observer.start()
+    print(f"Watching {root} for changes (Ctrl+C to stop)...\n")
+    try:
+        while observer.is_alive():
+            observer.join(timeout=1.0)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+    print("\nWatch stopped.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -546,6 +1104,7 @@ Examples:
   ./ssg.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
   ./ssg.py --name "My Blog" --serve             # Named site with local server
   ./ssg.py --output dist/ --serve               # Serve from output directory
+  ./ssg.py --incremental                        # Only rebuild changed pages
         """,
     )
     parser.add_argument(
@@ -561,9 +1120,15 @@ Examples:
     )
     parser.add_argument(
         "--name",
-        default="Blog",
+        default=None,
         metavar="SITE_NAME",
-        help='Site name shown in the header (default: "Blog")',
+        help='Site name shown in the header (default: from ssg.yml or "Blog")',
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        metavar="URL",
+        help="Base URL for sitemap.xml and search.json (e.g. https://example.com)",
     )
     parser.add_argument(
         "--dry-run",
@@ -598,14 +1163,25 @@ Examples:
     )
     parser.add_argument(
         "--theme",
-        default="default",
+        default=None,
         metavar="NAME",
-        help='Theme to use from the themes/ directory (default: "default")',
+        help='Theme to use from the themes/ directory (default: from ssg.yml or "default")',
     )
     parser.add_argument(
         "--list-themes",
         action="store_true",
         help="List available themes and exit",
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Only regenerate pages whose source file has changed since last build",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        metavar="FILE",
+        help="Path to config file (default: conf/ssg.yml next to ssg.py, then ssg.yml in source directory)",
     )
     args = parser.parse_args()
 
@@ -639,23 +1215,60 @@ Examples:
         if target.suffix.lower() not in {".md", ".markdown"}:
             print(f"Error: '{target}' is not a Markdown file (.md / .markdown).")
             sys.exit(1)
-        files = [target]
         root = target.parent
     elif target.is_dir():
         root = target
-        files = find_markdown_files(root)
-        if not files:
-            print(f"No Markdown files found under: {root}")
-            return
     else:
         print(f"Error: '{target}' is not a file or directory.")
         sys.exit(1)
 
-    print(f"Found {len(files)} Markdown file(s)\n")
+    # ── Load site config (ssg.yml / ssg.yaml) ─────────────────────────────
+    # Lookup order: --config flag > conf/ssg.yml (next to ssg.py) > ssg.yml in source root
+    #               > ssg.yaml in source root (legacy fallback)
+    def _find_default_config(base: Path) -> Path:
+        for name in ("ssg.yml", "ssg.yaml"):
+            p = base / name
+            if p.is_file():
+                return p
+        return base / "ssg.yml"  # non-existent sentinel; load_site_config returns {}
+
+    if args.config is not None:
+        config_path = Path(args.config).resolve()
+    else:
+        default_conf = _find_default_config(Path(__file__).parent / "conf")
+        config_path = default_conf if default_conf.is_file() else _find_default_config(root)
+    site_config = load_site_config(config_path)
+
+    # ── Merge CLI args with config (CLI always wins) ───────────────────────
+    site_name  = args.name     if args.name     is not None else site_config.get("name",   "Blog")
+    theme_name = args.theme    if args.theme    is not None else site_config.get("theme",  "default")
+    base_url   = args.base_url if args.base_url is not None else site_config.get("base_url", "")
+    output_arg = args.output   if args.output   is not None else site_config.get("output", None)
+
+    # Boolean/int flags: CLI flag presence overrides config; config overrides built-in default
+    # --serve is a nargs="?" int (None = not passed, 8000 = passed without value)
+    cfg_serve       = site_config.get("serve",       False)
+    cfg_port        = site_config.get("port",        8000)
+    cfg_watch       = site_config.get("watch",       False)
+    cfg_incremental = site_config.get("incremental", False)
+
+    # Resolve effective serve port: explicit --serve N > --port N > config port > 8000
+    if args.serve is not None:
+        effective_serve = True
+        effective_port  = args.serve if args.serve != 8000 else args.port
+    elif cfg_serve:
+        effective_serve = True
+        effective_port  = cfg_port
+    else:
+        effective_serve = False
+        effective_port  = args.port if args.port != 8000 else cfg_port
+
+    effective_watch       = args.watch       or cfg_watch
+    effective_incremental = args.incremental or cfg_incremental
 
     # ── Resolve output directory ───────────────────────────────────────────
-    if args.output:
-        output_dir = Path(args.output).resolve()
+    if output_arg:
+        output_dir = Path(output_arg).resolve()
     else:
         output_dir = (Path(__file__).parent / "output").resolve()
 
@@ -663,136 +1276,114 @@ Examples:
         print(f"Warning: output directory '{output_dir}' is inside the source directory '{root}'.")
         print("  This will mix generated HTML with Markdown sources.")
 
-    # ── Load theme ────────────────────────────────────────────────────────
-    theme_template, theme_dir = load_theme(args.theme)
+    # ── Handle single-file target: redirect to _run_build indirectly ──────
+    # For a single file, rebuild only that file; set root to its parent.
+    if target.is_file():
+        # Single-file mode: convert directly
+        theme_template, theme_dir = load_theme(theme_name)
+        out_html = output_dir / target.name.replace(target.suffix, ".html")
+        if args.dry_run:
+            print(f"  [dry-run] {target.name}  →  {out_html}")
+            return
+        out_html.parent.mkdir(parents=True, exist_ok=True)
+        copy_theme_assets(theme_dir, output_dir)
+        convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template)
+        print(f"  ✓  {target.name}  →  {out_html}")
+        print(f"\nDone.  1 converted, 0 errors.")
+        if effective_serve:
+            _serve(output_dir, effective_port, [(out_html, "Page")])
+        return
 
-    # ── Pass 1: collect titles and compute output paths ───────────────────
-    # all_files: list of (md_path, out_html_path, title)
-    all_files: list[tuple] = []
-    drafts = 0
-    for md_path in files:
+    # ── Load theme ────────────────────────────────────────────────────────
+    theme_template, theme_dir = load_theme(theme_name)
+
+    # ── Manifest path for incremental builds ─────────────────────────────
+    manifest_path = output_dir / ".ssg_manifest.json" if effective_incremental else None
+
+    # ── Run the build ─────────────────────────────────────────────────────
+    # Collect all_files for post-build serve logic
+    _files = find_markdown_files(root)
+    # Build a quick list for serve URL resolution
+    _all_files_preview: list[tuple] = []
+    for md_path in _files:
         title, _, front = collect_page_info(md_path)
         if front.get("draft") is True:
-            print(f"  [draft] skipping {md_path.name}")
-            drafts += 1
             continue
-        # index.md is always labelled "Home" in the nav
         if md_path.stem.lower() == "index":
             title = "Home"
-        if output_dir is not None:
-            rel = md_path.relative_to(root)
-            out_html = output_dir / rel.with_suffix(".html")
-        else:
-            out_html = md_path.with_suffix(".html")
-        all_files.append((md_path, out_html, title))
+        rel = md_path.relative_to(root)
+        out_html = output_dir / rel.with_suffix(".html")
+        _all_files_preview.append((md_path, out_html, title))
+    _all_files_preview.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
 
-    # index.html always listed first, everything else in discovery order
-    all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
+    ok, errors, skipped = _run_build(
+        root, output_dir, site_name, theme_template, theme_dir,
+        base_url=base_url,
+        incremental=effective_incremental,
+        manifest_path=manifest_path,
+        dry_run=args.dry_run,
+    )
 
-    # Single-file invocations get no cross-page nav (nothing to link to)
-    nav_pages = [(out_html, title) for _, out_html, title in all_files] if len(all_files) > 1 else []
+    if args.dry_run:
+        return
 
-    # ── Copy theme assets to output root ─────────────────────────────────
-    if not args.dry_run:
-        assets_root = output_dir if output_dir is not None else root
-        assets_root.mkdir(parents=True, exist_ok=True)
-        copy_theme_assets(theme_dir, assets_root)
-
-    # ── Remove stale HTML files with no corresponding source ──────────────
-    if not args.dry_run and output_dir is not None and output_dir.is_dir():
-        expected = {out_html for _, out_html, _ in all_files}
-        stale = clean_stale_html(output_dir, expected)
-        for path in stale:
-            try:
-                rel = path.relative_to(output_dir)
-            except ValueError:
-                rel = path
-            print(f"  [clean] removed stale {rel}")
-
-    ok = 0
-    errors = 0
-
-    # ── Pass 2: generate HTML with full nav ───────────────────────────────
-    for md_path, out_html, _title in all_files:
-        try:
-            rel = md_path.relative_to(root)
-        except ValueError:
-            rel = md_path
-
-        if args.dry_run:
-            try:
-                out_rel = out_html.relative_to(Path.cwd())
-            except ValueError:
-                out_rel = out_html
-            print(f"  [dry-run] {rel}  →  {out_rel}")
-            continue
-        try:
-            out = convert_md_to_html(md_path, out_html, args.name, nav_pages=nav_pages, template=theme_template)
-            print(f"  ✓  {rel}  →  {out}")
-            ok += 1
-        except Exception as exc:
-            print(f"  ✗  {rel}  →  ERROR: {exc}")
-            errors += 1
-
-    if not args.dry_run:
-        draft_note = f", {drafts} draft(s) skipped" if drafts else ""
-        print(f"\nDone.  {ok} converted{draft_note}, {errors} errors.")
-
-    if not args.dry_run and args.watch:
-        if args.serve is not None:
-            # Server takes the main thread; watch runs as a background daemon
+    if effective_watch:
+        if effective_serve:
             watch_thread = threading.Thread(
                 target=watch_and_rebuild,
-                args=(root, output_dir, args.name, theme_template),
+                args=(root, output_dir, site_name, theme_template, theme_dir),
+                kwargs={"base_url": base_url},
                 daemon=True,
             )
             watch_thread.start()
         else:
-            watch_and_rebuild(root, output_dir, args.name, theme_template)
+            watch_and_rebuild(root, output_dir, site_name, theme_template, theme_dir,
+                              base_url=base_url)
             return
 
-    if not args.dry_run and args.serve is not None:
-        serve_dir = output_dir if output_dir is not None else root
-        # args.serve is the inline port (e.g. --serve 9000) or 8000 (const when
-        # --serve is given without a value).  args.port is set by --port.
-        # Prefer --port when --serve was given without an explicit value.
-        port = args.serve if args.serve != 8000 else args.port
+    if effective_serve:
+        _serve(output_dir, effective_port, _all_files_preview)
 
-        # Find the first generated HTML file to open in the browser
-        # Prefer index.html as the landing page
-        index_html = serve_dir / "index.html"
-        if index_html.is_file():
-            open_url = f"http://localhost:{port}/index.html"
-        elif all_files:
-            first_html = all_files[0][1]  # out_html from first entry
+
+def _serve(serve_dir: Path, port: int, all_files: list) -> None:
+    """Start a local HTTP server serving serve_dir."""
+
+    index_html = serve_dir / "index.html"
+    if index_html.is_file():
+        open_url = f"http://localhost:{port}/index.html"
+    elif all_files:
+        first_html = all_files[0][1]
+        try:
             rel_html = first_html.relative_to(serve_dir)
-            open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
+        except ValueError:
+            rel_html = first_html
+        open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
+    else:
+        open_url = f"http://localhost:{port}/"
+
+    class QuietHandler(SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(serve_dir), **kw)
+        def log_message(self, fmt, *a):
+            pass
+
+    try:
+        server = HTTPServer(("127.0.0.1", port), QuietHandler)
+    except OSError as exc:
+        if exc.errno == 98 or "already in use" in str(exc).lower():
+            print(f"Error: port {port} is already in use. Try --port <other>")
         else:
-            open_url = f"http://localhost:{port}/"
+            print(f"Error starting server: {exc}")
+        sys.exit(1)
+    print(f"\nServing at http://localhost:{port}/")
+    print(f"Opening  {open_url}")
+    print("Press Ctrl+C to stop.\n")
 
-        class QuietHandler(SimpleHTTPRequestHandler):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, directory=str(serve_dir), **kwargs)
-            def log_message(self, fmt, *args):
-                pass  # suppress per-request noise
-
-        try:
-            server = HTTPServer(("127.0.0.1", port), QuietHandler)
-        except OSError as exc:
-            if exc.errno == 98 or "already in use" in str(exc).lower():
-                print(f"Error: port {port} is already in use. Try --port <other>")
-            else:
-                print(f"Error starting server: {exc}")
-            sys.exit(1)
-        print(f"\nServing at http://localhost:{port}/")
-        print(f"Opening  {open_url}")
-        print("Press Ctrl+C to stop.\n")
-
-        threading.Timer(0.5, lambda: webbrowser.open(open_url)).start()
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            print("\nServer stopped.")
+    threading.Timer(0.5, lambda: webbrowser.open(open_url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
 
 
 if __name__ == "__main__":

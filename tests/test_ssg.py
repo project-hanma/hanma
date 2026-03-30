@@ -784,3 +784,470 @@ class TestListThemes:
             text=True,
         )
         assert "default" in result.stdout
+
+
+# ===========================================================================
+# 21. Tag index pages
+# ===========================================================================
+
+
+class TestTagIndexPages:
+    def test_tag_index_pages_generated(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - python\n  - web\n---\n# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "tags" / "python.html").exists()
+        assert (out_dir / "tags" / "web.html").exists()
+
+    def test_tag_index_lists_tagged_page(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - python\n---\n# My Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        tag_html = (out_dir / "tags" / "python.html").read_text()
+        assert "My Page" in tag_html
+
+    def test_tag_index_title_contains_tag_name(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - python\n---\n# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        tag_html = (out_dir / "tags" / "python.html").read_text()
+        assert "python" in tag_html
+
+    def test_tag_links_in_page_content(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - python\n---\n# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        page_html = (out_dir / "page.html").read_text()
+        # Tag should be a link pointing into tags/
+        assert "tags/python.html" in page_html or "../tags/python.html" in page_html
+
+    def test_tag_slug_normalizes_special_chars(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - 'my tag'\n---\n# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        # "my tag" → "my-tag"
+        assert (out_dir / "tags" / "my-tag.html").exists()
+
+    def test_multiple_pages_same_tag(self, tmp_path):
+        write(tmp_path / "a.md", "---\ntags:\n  - python\n---\n# A\n\nContent.")
+        write(tmp_path / "b.md", "---\ntags:\n  - python\n---\n# B\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        tag_html = (out_dir / "tags" / "python.html").read_text()
+        assert "A" in tag_html
+        assert "B" in tag_html
+
+    def test_no_tag_pages_when_no_tags(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert not (out_dir / "tags").exists()
+
+    def test_build_tag_index_html_function(self, tmp_path):
+        out_path = tmp_path / "tags" / "python.html"
+        pages = [(tmp_path / "page.html", "My Page", "March 01, 2025")]
+        (tmp_path / "page.html").write_text("<html></html>")
+        template, _ = ssg.load_theme("default")
+        ssg.build_tag_index_html("python", pages, out_path, "Test", [], template)
+        assert out_path.exists()
+        html_text = out_path.read_text()
+        assert "python" in html_text
+        assert "My Page" in html_text
+
+
+# ===========================================================================
+# 22. Sitemap generation
+# ===========================================================================
+
+
+class TestSitemap:
+    def test_sitemap_generated_with_base_url(self, tmp_path):
+        write(tmp_path / "index.md", "# Home\n\nWelcome.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+        assert (out_dir / "sitemap.xml").exists()
+
+    def test_sitemap_contains_page_urls(self, tmp_path):
+        write(tmp_path / "index.md", "# Home\n\nWelcome.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+        sitemap = (out_dir / "sitemap.xml").read_text()
+        assert "https://example.com" in sitemap
+        assert "index.html" in sitemap
+
+    def test_sitemap_not_generated_without_base_url(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert not (out_dir / "sitemap.xml").exists()
+
+    def test_sitemap_is_valid_xml(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(out_dir / "sitemap.xml")
+        root_elem = tree.getroot()
+        assert "urlset" in root_elem.tag
+
+    def test_build_sitemap_xml_function_no_base_url(self, tmp_path):
+        result = ssg.build_sitemap_xml([], tmp_path, "")
+        assert result is None
+        assert not (tmp_path / "sitemap.xml").exists()
+
+
+# ===========================================================================
+# 23. Site config file (ssg.yaml)
+# ===========================================================================
+
+
+class TestSiteConfig:
+    def test_load_site_config_reads_name(self, tmp_path):
+        (tmp_path / "ssg.yaml").write_text("name: My Config Site\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        assert config.get("name") == "My Config Site"
+
+    def test_load_site_config_returns_empty_when_missing(self, tmp_path):
+        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        assert config == {}
+
+    def test_load_site_config_reads_base_url(self, tmp_path):
+        (tmp_path / "ssg.yaml").write_text("base_url: https://example.com\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        assert config.get("base_url") == "https://example.com"
+
+    def test_load_site_config_reads_theme(self, tmp_path):
+        (tmp_path / "ssg.yaml").write_text("theme: default\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        assert config.get("theme") == "default"
+
+    def test_site_config_name_used_in_output(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        cfg = tmp_path / "ssg.yaml"
+        cfg.write_text("name: ConfigSiteName\n")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
+        page_html = (out_dir / "page.html").read_text()
+        assert "ConfigSiteName" in page_html
+
+    def test_cli_name_overrides_config(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        (tmp_path / "ssg.yaml").write_text("name: ConfigName\n")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--name", "CLIName")
+        page_html = (out_dir / "page.html").read_text()
+        assert "CLIName" in page_html
+        assert "ConfigName" not in page_html
+
+    def test_malformed_config_returns_empty(self, tmp_path):
+        (tmp_path / "ssg.yaml").write_text(": bad: yaml: {\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        assert config == {}
+
+    def test_custom_config_path_flag(self, tmp_path):
+        cfg_path = tmp_path / "custom.yaml"
+        cfg_path.write_text("name: CustomPathSite\n")
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg_path))
+        page_html = (out_dir / "page.html").read_text()
+        assert "CustomPathSite" in page_html
+
+    def test_load_site_config_reads_serve(self, tmp_path):
+        (tmp_path / "ssg.yml").write_text("serve: true\nport: 9000\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        assert config.get("serve") is True
+        assert config.get("port") == 9000
+
+    def test_load_site_config_reads_watch(self, tmp_path):
+        (tmp_path / "ssg.yml").write_text("watch: true\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        assert config.get("watch") is True
+
+    def test_load_site_config_reads_incremental(self, tmp_path):
+        (tmp_path / "ssg.yml").write_text("incremental: true\n")
+        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        assert config.get("incremental") is True
+
+    def test_load_site_config_prefers_ssg_yml_over_ssg_yaml(self, tmp_path):
+        (tmp_path / "ssg.yml").write_text("name: FromYml\n")
+        (tmp_path / "ssg.yaml").write_text("name: FromYaml\n")
+        # load_site_config takes an explicit path; the lookup preference is in main()
+        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        assert config.get("name") == "FromYml"
+
+    def test_default_conf_dir_ssg_yml_loaded(self):
+        """conf/ssg.yml next to ssg.py is loaded without any --config flag."""
+        conf_yml = SSG.parent / "conf" / "ssg.yml"
+        assert conf_yml.is_file(), "conf/ssg.yml must exist"
+        config = ssg.load_site_config(conf_yml)
+        # The shipped default must at minimum define 'name'
+        assert "name" in config
+
+
+# ===========================================================================
+# 24. Static asset passthrough
+# ===========================================================================
+
+
+class TestStaticAssets:
+    def test_static_dir_copied_to_output(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        (tmp_path / "static").mkdir()
+        (tmp_path / "static" / "logo.png").write_bytes(b"\x89PNG\r\n")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "static" / "logo.png").exists()
+
+    def test_static_subdirs_copied(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        (tmp_path / "static" / "images").mkdir(parents=True)
+        (tmp_path / "static" / "images" / "photo.jpg").write_bytes(b"JFIF")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "static" / "images" / "photo.jpg").exists()
+
+    def test_no_static_dir_no_error(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))  # must not raise
+
+    def test_copy_static_assets_function(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        (src / "static").mkdir(parents=True)
+        (src / "static" / "style.css").write_text("body {}")
+        ssg.copy_static_assets(src, dst)
+        assert (dst / "static" / "style.css").exists()
+
+    def test_copy_static_assets_no_static_dir(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        ssg.copy_static_assets(src, dst)  # should not raise
+
+
+# ===========================================================================
+# 25. Search index (search.json)
+# ===========================================================================
+
+
+class TestSearchIndex:
+    def test_search_json_generated(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "search.json").exists()
+
+    def test_search_json_contains_page_title(self, tmp_path):
+        write(tmp_path / "page.md", "# My Title\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        import json as _json
+        entries = _json.loads((out_dir / "search.json").read_text())
+        titles = [e["title"] for e in entries]
+        assert "My Title" in titles
+
+    def test_search_json_contains_description(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ndescription: A custom description.\n---\n# Title\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        import json as _json
+        entries = _json.loads((out_dir / "search.json").read_text())
+        descs = [e["description"] for e in entries]
+        assert "A custom description." in descs
+
+    def test_search_json_contains_tags(self, tmp_path):
+        write(tmp_path / "page.md",
+              "---\ntags:\n  - python\n---\n# Title\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        import json as _json
+        entries = _json.loads((out_dir / "search.json").read_text())
+        all_tags = [t for e in entries for t in e.get("tags", [])]
+        assert "python" in all_tags
+
+    def test_search_json_url_is_relative(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        import json as _json
+        entries = _json.loads((out_dir / "search.json").read_text())
+        for e in entries:
+            assert not e["url"].startswith("http")
+
+    def test_search_json_url_absolute_with_base_url(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+        import json as _json
+        entries = _json.loads((out_dir / "search.json").read_text())
+        for e in entries:
+            assert e["url"].startswith("https://example.com")
+
+    def test_build_search_json_function(self, tmp_path):
+        import json as _json
+        entries = [{"title": "T", "description": "D", "url": "t.html", "tags": []}]
+        ssg.build_search_json(entries, tmp_path)
+        result = _json.loads((tmp_path / "search.json").read_text())
+        assert result[0]["title"] == "T"
+
+
+# ===========================================================================
+# 26. Post listing page
+# ===========================================================================
+
+
+class TestPostListingPage:
+    def test_posts_html_generated_when_dated_pages_exist(self, tmp_path):
+        write(tmp_path / "post.md",
+              "---\ndate: 2025-01-01\n---\n# My Post\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "posts.html").exists()
+
+    def test_posts_html_not_generated_when_no_dated_pages(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert not (out_dir / "posts.html").exists()
+
+    def test_posts_html_lists_dated_pages(self, tmp_path):
+        write(tmp_path / "post.md",
+              "---\ndate: 2025-03-01\n---\n# My Dated Post\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        posts_html = (out_dir / "posts.html").read_text()
+        assert "My Dated Post" in posts_html
+
+    def test_posts_html_sorted_newest_first(self, tmp_path):
+        write(tmp_path / "old.md",
+              "---\ndate: 2024-01-01\n---\n# Old Post\n\nContent.")
+        write(tmp_path / "new.md",
+              "---\ndate: 2025-06-01\n---\n# New Post\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        posts_html = (out_dir / "posts.html").read_text()
+        assert posts_html.index("New Post") < posts_html.index("Old Post")
+
+    def test_posts_html_skipped_when_posts_md_exists(self, tmp_path):
+        write(tmp_path / "post.md",
+              "---\ndate: 2025-01-01\n---\n# A Post\n\nContent.")
+        write(tmp_path / "posts.md", "# My Posts\n\nManual listing.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        # posts.html should exist but be the rendered posts.md, not auto-generated
+        posts_html = (out_dir / "posts.html").read_text()
+        assert "My Posts" in posts_html
+
+    def test_build_posts_listing_html_function(self, tmp_path):
+        from datetime import datetime
+        out_path = tmp_path / "posts.html"
+        template, _ = ssg.load_theme("default")
+        dated = [(tmp_path / "post.html", "My Post", datetime(2025, 3, 1), "A description")]
+        ssg.build_posts_listing_html(dated, out_path, "Test", [], template)
+        assert out_path.exists()
+        html_text = out_path.read_text()
+        assert "My Post" in html_text
+        assert "All Posts" in html_text
+
+
+# ===========================================================================
+# 27. Incremental builds
+# ===========================================================================
+
+
+class TestIncrementalBuilds:
+    def test_incremental_flag_accepted(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        assert (out_dir / "page.html").exists()
+
+    def test_manifest_file_created(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        assert (out_dir / ".ssg_manifest.json").exists()
+
+    def test_unchanged_page_skipped_on_second_build(self, tmp_path):
+        write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        assert "skip" in result.stdout.lower() or "unchanged" in result.stdout.lower()
+
+    def test_changed_page_rebuilt(self, tmp_path):
+        md = write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        # Modify the file and bump its mtime
+        md.write_text("# Page\n\nUpdated content.")
+        import os as _os
+        _os.utime(md, None)
+        result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+        assert "skip" not in result.stdout.lower() or "Updated" in (out_dir / "page.html").read_text()
+
+    def test_page_needs_rebuild_missing_output(self, tmp_path):
+        md = write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_html = tmp_path / "page.html"
+        assert ssg.page_needs_rebuild(md, out_html, {}, 0.0) is True
+
+    def test_page_needs_rebuild_unchanged(self, tmp_path):
+        md = write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_html = tmp_path / "page.html"
+        out_html.write_text("<html></html>")
+        mtime = md.stat().st_mtime
+        manifest = {str(md): mtime, "_template_mtime": 0.0}
+        assert ssg.page_needs_rebuild(md, out_html, manifest, 0.0) is False
+
+    def test_page_needs_rebuild_template_changed(self, tmp_path):
+        md = write(tmp_path / "page.md", "# Page\n\nContent.")
+        out_html = tmp_path / "page.html"
+        out_html.write_text("<html></html>")
+        mtime = md.stat().st_mtime
+        manifest = {str(md): mtime, "_template_mtime": 0.0}
+        # Template mtime is newer than manifest records
+        assert ssg.page_needs_rebuild(md, out_html, manifest, mtime + 1.0) is True
+
+    def test_load_save_manifest_roundtrip(self, tmp_path):
+        manifest_path = tmp_path / ".ssg_manifest.json"
+        data = {"/some/path.md": 1234567890.0, "_template_mtime": 9876543.0}
+        ssg.save_build_manifest(manifest_path, data)
+        loaded = ssg.load_build_manifest(manifest_path)
+        assert loaded == data
+
+    def test_load_manifest_missing_file(self, tmp_path):
+        result = ssg.load_build_manifest(tmp_path / ".ssg_manifest.json")
+        assert result == {}
+
+
+# ===========================================================================
+# 28. inotify/watchdog-based watch (unit-level checks)
+# ===========================================================================
+
+
+class TestWatchdogWatch:
+    def test_watchdog_available(self):
+        assert ssg._WATCHDOG_AVAILABLE is True
+
+    def test_ssg_event_handler_relevance(self, tmp_path):
+        handler = ssg._SsgEventHandler(lambda: None, tmp_path, tmp_path)
+        assert handler._is_relevant("file.md") is True
+        assert handler._is_relevant("file.html") is True
+        assert handler._is_relevant("file.yaml") is True
+        assert handler._is_relevant("file.png") is False
+        assert handler._is_relevant("file.txt") is False
+
+    def test_watch_and_rebuild_signature_accepts_base_url(self, tmp_path):
+        import inspect
+        sig = inspect.signature(ssg.watch_and_rebuild)
+        assert "base_url" in sig.parameters

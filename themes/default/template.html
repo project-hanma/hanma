@@ -487,6 +487,32 @@
       border: 1px solid currentColor;
       border-radius: 3px;
       padding: 0.15rem 0.5rem;
+      text-decoration: none;
+    }
+    .page-tags a.tag:hover { opacity: 0.75; }
+
+    /* ── Tag index & post listing pages ──────────────────────────────────── */
+    .tag-index, .post-list {
+      list-style: none;
+      padding: 0;
+      margin-top: 1.5rem;
+    }
+    .tag-index li, .post-list li {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tag-index li:last-child, .post-list li:last-child { border-bottom: none; }
+    .post-date {
+      font-family: var(--font-ui);
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-left: 0.5rem;
+    }
+    .post-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+      margin-bottom: 0;
     }
 
     /* ── Print ────────────────────────────────────────────────────────────── */
