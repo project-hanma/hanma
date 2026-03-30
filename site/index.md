@@ -1,7 +1,10 @@
-# Welcome to the site
-
-Enjoy!
-
+---
+title: the zen garden
+description: KEK
+author: Chris H.
+date: 2026-03-29
 ---
 
-Pizza.
+# bleh
+
+nothing to see here...yet

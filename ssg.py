@@ -3,20 +3,20 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.4.3
+Version: 0.4.5
 
 Usage:
     python ssg.py [directory]
 
-If no directory is given, the current working directory is used.
+If no directory is given, ./site/ is used (falling back to the current directory).
 All .md files found in the directory tree are converted to .html
-files written alongside the source .md file.
+files written to ./output/ by default.
 
 Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.3"
+__version__ = "0.4.5"
 
 import html
 import json
@@ -444,8 +444,23 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     sitemap_link = '<a href="sitemap.xml">Sitemap</a>' if base_url else ""
     search_url = _search_json_url(out_path, output_root, base_url)
 
+    # Logic for browser <title>:
+    # 1. Homepage (root index.html) shows only site_name
+    # 2. If page title matches site_name, show only site_name
+    # 3. Otherwise, use "Site Name - Page Title"
+    is_root_index = output_root and out_path.resolve() == (output_root / "index.html").resolve()
+    titles_match = site_name and title.lower() == site_name.lower()
+
+    if site_name:
+        if is_root_index or titles_match:
+            display_title = site_name
+        else:
+            display_title = f"{site_name} - {title}"
+    else:
+        display_title = title
+
     page_html = template.substitute(
-        title=html.escape(title),
+        title=html.escape(display_title),
         description=html.escape(description),
         author_meta=author_meta,
         keywords_meta=keywords_meta,
@@ -551,8 +566,14 @@ def _make_generated_page(content_html: str, title: str, description: str,
     """Render a generated (non-markdown) page using the active theme template."""
     nav_html = build_nav_html(out_path, "", nav_pages)
     now = datetime.now()
+    titles_match = site_name and title.lower() == site_name.lower()
+    if site_name and not titles_match:
+        display_title = f"{site_name} - {title}"
+    else:
+        display_title = site_name or title
+
     page_html = template.substitute(
-        title=html.escape(title),
+        title=html.escape(display_title),
         description=html.escape(description),
         author_meta="",
         keywords_meta="",
