@@ -377,9 +377,6 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-CI runs automatically via Gitea Actions on every push and pull request to
-`develop`, running on a self-hosted Fedora Docker container (`ansible-dev-fedora`).
-
 ## Customisation
 
 Visual styling is fully delegated to the active theme. See the **Themes** section above for details on creating or modifying themes under `themes/`.
