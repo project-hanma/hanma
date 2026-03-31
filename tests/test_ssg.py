@@ -673,7 +673,8 @@ class TestXSSEscaping:
     def test_nav_title_xss_escaped(self, tmp_path):
         src = write(tmp_path / "page.md", "# T\n\nContent.")
         out = tmp_path / "page.html"
-        nav_pages = [(out, '<script>nav</script>')]
+        # nav_pages now takes 4-tuples: (out_html, title, md_path, layout)
+        nav_pages = [(out, '<script>nav</script>', src, 'page')]
         ssg.convert_md_to_html(src, out, "S", nav_pages=nav_pages)
         html_text = out.read_text()
         assert "<script>nav</script>" not in html_text
@@ -739,13 +740,18 @@ class TestNavRelativeURLs:
         # Link from posts/hello.html to index.html must go up one level
         assert "../index.html" in html
 
-    def test_nav_link_from_index_to_subdir_page(self, tmp_path):
+    def test_posts_dir_pages_appear_in_posts_listing(self, tmp_path):
+        # Posts in posts/ are excluded from nav and instead appear in posts/index.html listing.
         write(tmp_path / "index.md", "# Home\n\nWelcome.")
         write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        html = (out_dir / "index.html").read_text()
-        assert "posts/hello.html" in html
+        # posts/index.html should be generated and link to hello.html
+        posts_listing = (out_dir / "posts" / "index.html").read_text()
+        assert "hello.html" in posts_listing
+        # posts/hello.html should NOT appear in the index.html nav
+        index_html = (out_dir / "index.html").read_text()
+        assert "posts/hello.html" not in index_html
 
 
 # ===========================================================================
@@ -1107,57 +1113,74 @@ class TestSearchIndex:
 
 
 class TestPostListingPage:
-    def test_posts_html_generated_when_dated_pages_exist(self, tmp_path):
-        write(tmp_path / "post.md",
+    def test_posts_index_generated_when_posts_dir_exists(self, tmp_path):
+        # Files in posts/ default to layout: post and appear in posts/index.html
+        write(tmp_path / "posts" / "post.md",
               "---\ndate: 2025-01-01\n---\n# My Post\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        assert (out_dir / "posts.html").exists()
+        assert (out_dir / "posts" / "index.html").exists()
 
-    def test_posts_html_not_generated_when_no_dated_pages(self, tmp_path):
+    def test_posts_index_generated_when_layout_post_used(self, tmp_path):
+        # A page with explicit layout: post also appears in posts/index.html
+        write(tmp_path / "post.md",
+              "---\nlayout: post\ndate: 2025-01-01\n---\n# My Post\n\nContent.")
+        out_dir = tmp_path / "out"
+        run(str(tmp_path), "--output", str(out_dir))
+        assert (out_dir / "posts" / "index.html").exists()
+
+    def test_posts_index_not_generated_when_no_post_pages(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        assert not (out_dir / "posts.html").exists()
+        assert not (out_dir / "posts" / "index.html").exists()
 
-    def test_posts_html_lists_dated_pages(self, tmp_path):
-        write(tmp_path / "post.md",
-              "---\ndate: 2025-03-01\n---\n# My Dated Post\n\nContent.")
+    def test_posts_index_lists_post_pages(self, tmp_path):
+        write(tmp_path / "posts" / "post.md",
+              "---\ndate: 2025-03-01\n---\n# My Post\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        posts_html = (out_dir / "posts.html").read_text()
-        assert "My Dated Post" in posts_html
+        posts_html = (out_dir / "posts" / "index.html").read_text()
+        assert "My Post" in posts_html
 
-    def test_posts_html_sorted_newest_first(self, tmp_path):
-        write(tmp_path / "old.md",
-              "---\ndate: 2024-01-01\n---\n# Old Post\n\nContent.")
-        write(tmp_path / "new.md",
-              "---\ndate: 2025-06-01\n---\n# New Post\n\nContent.")
+    def test_posts_index_sorted_newest_first(self, tmp_path):
+        import os, time
+        old_md = tmp_path / "posts" / "old.md"
+        new_md = tmp_path / "posts" / "new.md"
+        write(old_md, "# Old Post\n\nContent.")
+        time.sleep(0.05)
+        write(new_md, "# New Post\n\nContent.")
+        # Ensure old.md has an older mtime than new.md
+        old_time = time.time() - 100
+        os.utime(old_md, (old_time, old_time))
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        posts_html = (out_dir / "posts.html").read_text()
+        posts_html = (out_dir / "posts" / "index.html").read_text()
         assert posts_html.index("New Post") < posts_html.index("Old Post")
 
-    def test_posts_html_skipped_when_posts_md_exists(self, tmp_path):
-        write(tmp_path / "post.md",
+    def test_posts_index_skipped_when_posts_index_md_exists(self, tmp_path):
+        # If posts/index.md exists as a source file, the auto-generated listing is skipped.
+        write(tmp_path / "posts" / "a-post.md",
               "---\ndate: 2025-01-01\n---\n# A Post\n\nContent.")
-        write(tmp_path / "posts.md", "# My Posts\n\nManual listing.")
+        write(tmp_path / "posts" / "index.md", "# My Posts\n\nManual listing.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir))
-        # posts.html should exist but be the rendered posts.md, not auto-generated
-        posts_html = (out_dir / "posts.html").read_text()
+        # posts/index.html should exist but be the rendered posts/index.md, not auto-generated
+        posts_html = (out_dir / "posts" / "index.html").read_text()
         assert "My Posts" in posts_html
 
     def test_build_posts_listing_html_function(self, tmp_path):
         from datetime import datetime
         out_path = tmp_path / "posts.html"
         template, _ = ssg.load_theme("default")
-        dated = [(tmp_path / "post.html", "My Post", datetime(2025, 3, 1), "A description")]
+        dt = datetime(2025, 3, 1, 14, 30)
+        dated = [(tmp_path / "post.html", "My Post", dt, "A description")]
         ssg.build_posts_listing_html(dated, out_path, "Test", [], template)
         assert out_path.exists()
         html_text = out_path.read_text()
         assert "My Post" in html_text
-        assert "All Posts" in html_text
+        # The page title uses posts_label (default "Blog")
+        assert "Blog" in html_text
 
 
 # ===========================================================================

@@ -11,8 +11,7 @@ no configuration file required.
 - Recurses into sub-directories automatically, mirroring the source tree
 - Defaults to `./site/` as the content root (falls back to current directory)
 - `index.md` becomes the homepage — labelled **Home** and pinned first in the nav
-- Cross-page navigation bar — all generated pages linked from every page
-- Per-page table of contents rendered as a dropdown on the active nav item
+- Folder-based navigation bar — "Home" pinned first; pages grouped by directory with dropdown menus; posts listing link ("Blog" by default) always last
 - Responsive layout — 80% width centred, collapses cleanly on mobile
 - Dark mode with OS preference detection and manual toggle (persisted via `localStorage`)
 - Syntax-highlighted fenced code blocks (Pygments — themed per light/dark mode)
@@ -25,11 +24,11 @@ no configuration file required.
 - Theme system — swap the entire HTML/CSS/JS layout with `--theme NAME`; themes are self-contained directories
 - Site config file (`ssg.yml`) — project-level defaults for name, output, theme, base URL, and more
 - Tag index pages — `tags/<slug>.html` generated automatically from front matter tags
-- Posts listing page — `posts.html` auto-generated from all pages with a `date` field
+- Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by file modification time (newest first), accessible at `/posts/`
 - Client-side search — `search.json` generated and searchable inline via the default theme's header search box
 - Sitemap — `sitemap.xml` generated when `--base-url` is set
 - Static asset passthrough — `site/static/` copied verbatim to the output directory
-- Incremental builds (`--incremental`) — only regenerates pages whose source has changed
+- Incremental builds (`--incremental`) — only regenerates pages whose source, theme template, or config file has changed
 - `--init` scaffold — creates a sample `site/` directory with starter content
 - Skips dot-directories (e.g. `.venv`, `.git`) and `README.md` files automatically
 
@@ -215,6 +214,7 @@ serve: false            # start HTTP server after build (true/false)
 port: 8000              # HTTP server port
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
+posts_label: Blog       # label for the posts listing link in the nav (default: "Blog")
 ```
 
 Config file lookup order (first found wins):
@@ -229,7 +229,7 @@ If `site/index.md` exists it is treated as the homepage:
 
 - Converted to `index.html` (in-place or in `--output` dir)
 - Labelled **Home** in the navigation bar regardless of the H1 in the file
-- Always listed as the first navigation item
+- Always pinned as the first navigation item
 - Opened automatically in the browser when using `--serve`
 
 ## Ignored Files
@@ -267,7 +267,8 @@ All fields are optional. When present they take effect as follows:
 | `title` | string | Overrides the auto-extracted H1 heading; prepended with the site name in the browser title |
 | `description` | string | Overrides the auto-extracted first paragraph |
 | `author` | string | Shown in the page footer; added as `<meta name="author">` |
-| `date` | YYYY-MM-DD | Shown in the page footer alongside the author; page included in posts listing |
+| `date` | YYYY-MM-DD | Shown in the page footer alongside the author (has no effect on post listing order or display — posts always sort and display by file modification time) |
+| `layout` | string | `page` or `post` — overrides directory-based default (`posts/` files default to `post`) |
 | `tags` | list | Rendered as a tag strip below the content; generates `tags/<slug>.html` index pages; added as `<meta name="keywords">` |
 | `draft` | bool | If `true`, the page is silently skipped during generation |
 | `refresh` | int | Auto-refresh interval in seconds — injects `<meta http-equiv="refresh">` into the page head; omit or set to `0` to disable |
@@ -279,7 +280,7 @@ Several pages are generated automatically alongside converted Markdown:
 | Page | Generated when |
 |---|---|
 | `tags/<slug>.html` | Any source page has a `tags` front matter field |
-| `posts.html` | Any source page has a `date` front matter field (skipped if `posts.md` exists) |
+| `posts/index.html` | Any source page has `layout: post` (files in `posts/` default to this; skipped if `posts/index.md` exists); sorted by file mtime newest-first; dates displayed as `M/D/YYYY @ HH:MM AM/PM`; served at `/posts/` URL |
 | `sitemap.xml` | `--base-url` is set |
 | `search.json` | Always — used by the default theme's inline search box |
 

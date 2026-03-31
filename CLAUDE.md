@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.4.8 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.5.0 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -88,10 +88,11 @@ The pipeline runs in two passes over discovered Markdown files, orchestrated by 
 | `title` | string | Overrides auto-extracted H1 |
 | `description` | string | Overrides auto-extracted first paragraph |
 | `author` | string | Shown in page footer; added as `<meta name="author">` |
-| `date` | YYYY-MM-DD | Shown in page footer alongside author; page included in posts listing |
+| `date` | YYYY-MM-DD | Shown in page footer alongside author (has no effect on post listing order or display — posts always use file mtime) |
 | `tags` | list | Rendered as clickable tag links below content; generates `tags/<slug>.html` index pages |
 | `draft` | bool | If `true`, page is skipped entirely during generation |
 | `refresh` | int | Auto-refresh interval in seconds; omit or set to 0 to disable |
+| `layout` | string | `page` (default) or `post`; overrides directory-based default |
 
 **Site config file (`ssg.yml`):**
 
@@ -112,6 +113,7 @@ serve: false            # start HTTP server after build (true/false)
 port: 8000              # HTTP server port (used when serve: true)
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
+posts_label: Blog       # label for the posts listing nav link (default: "Blog")
 ```
 
 **Themes:**
@@ -130,26 +132,35 @@ Select a theme with `--theme NAME` (default: `default`). The `themes/default/` t
 Any `static/` directory at the root of the source directory is copied verbatim to `output/static/`. This is the mechanism for images, fonts, and other non-Markdown files.
 
 **Key implementation details:**
-- `load_site_config(config_path)` reads `ssg.yml` (or `ssg.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`). CLI flags always override.
+- `load_site_config(config_path)` reads `ssg.yml` (or `ssg.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`, `posts_label`). CLI flags always override.
 - `load_theme(name)` reads `themes/<name>/template.html` and returns a `string.Template`. Exits cleanly if the theme or file is missing.
 - `copy_theme_assets(theme_dir, output_root)` copies all non-`template.html` files from the theme directory into the output root.
 - `copy_static_assets(source_root, output_root)` copies `source_root/static/` → `output_root/static/` using `shutil.copytree`. Does nothing if `static/` is absent.
 - Syntax highlighting CSS is generated at startup via `_build_highlight_css()` using Pygments (`friendly` theme for light, `monokai` for dark) and injected as `$HIGHLIGHT_CSS`.
 - Dark mode toggles a `data-theme` attribute on `<html>`, persisted via `localStorage`.
 - Generated HTML is fully self-contained — no external resources after generation.
-- `index.md` at the root of the target directory is treated as the site homepage and titled "Home" in navigation.
-- `build_nav_html()` receives `(out_html_path, title)` pairs and computes relative URLs between output files — navigation links are always relative to the output location, not the source. Generated pages (tag indexes, posts listing) are excluded from the nav.
+- `index.md` at the root of the target directory is treated as the site homepage and titled "Home" in navigation. Subdirectory `index.md` files use their own title.
+- **Navigation is folder-based, not heading-based.** `build_nav_html()` receives `(out_html_path, title, md_path, layout)` tuples and builds a two-level nav:
+  - "Home" (root `index.md`) is always pinned as the first nav item.
+  - Other root-level pages appear next as top-level items.
+  - A subdirectory with an `index.md` becomes a top-level nav item (using that index's title); other pages in that directory appear as dropdown items under it.
+  - Pages in `posts/` are excluded from the page-based nav.
+  - If a posts listing exists (`posts.html`), a link to it is appended as the **last** nav item, labelled by `posts_label` (default `"Blog"`, configurable via `posts_label` in `ssg.yml`).
+  - Headings are no longer used to generate dropdown items.
+  - Navigation links are always relative to the output location, not the source. Generated pages (tag indexes, posts listing) are excluded from the page-based nav.
+- **Layout defaults:** Files under `posts/` default to `layout: post`; all other files default to `layout: page`. Front matter `layout` field overrides the directory-based default.
+- **Posts listing (`posts/index.html`):** All pages with `layout: post` (including those outside `posts/` with explicit `layout: post`) are included in the posts listing, sorted by file modification time (newest first). The `date` front matter field is ignored for post ordering and display — each post shows its file mtime formatted as `M/D/YYYY @ HH:MM AM/PM`. Written to `output/posts/index.html` so that the `/posts/` URL serves the listing directly. Skipped if `posts/index.md` exists as a source file. Pages outside `posts/` with `layout: post` also appear in the nav.
 - When `--output DIR` is given, the source tree is mirrored under `DIR` (e.g. `site/posts/hello.md` → `DIR/posts/hello.html`).
 - `clean_stale_html(output_dir, expected_html)` removes `.html` files in the output directory that have no corresponding source page. `expected_html` includes generated tag/posts pages. Called at the start of `_run_build()`.
 - `_normalize_tag(tag)` converts a tag string to a filesystem-safe slug (e.g. `"my tag"` → `"my-tag"`).
 - `build_tag_index_html(tag, pages, ...)` generates `tags/<slug>.html` listing all pages with that tag.
-- `build_posts_listing_html(dated_pages, ...)` generates `posts.html` sorted newest-first. Skipped if `posts.md` exists as a source file.
+- `build_posts_listing_html(dated_pages, ...)` generates `posts/index.html` for all `layout: post` pages. `dated_pages` entries are `(out_html, title, mtime_dt, description)` tuples; sorted by `mtime_dt` newest-first. Each post displays its mtime as `M/D/YYYY @ HH:MM AM/PM`. Skipped if `posts/index.md` exists as a source file.
 - `build_sitemap_xml(pages, output_root, base_url)` writes `sitemap.xml`; returns `None` and does nothing when `base_url` is empty. A "Sitemap" link is also injected into the footer of every generated page via `$sitemap_link` (empty string when `base_url` is unset).
 - `build_search_json(entries, output_root, base_url)` writes `search.json` with `{title, description, url, tags}` per page. The default theme includes a client-side search box in the header that lazily fetches `search.json` on first keystroke and filters results inline — no server required. The URL is injected per-page as `$search_json_url` (relative path accounting for subdirectory depth, or absolute when `base_url` is set).
 - `_search_json_url(out_path, output_root, base_url)` computes the correct URL to `search.json` as seen from a given output page.
 - `init_scaffold(site_dir, force)` creates `index.md`, `about.md`, and `posts/hello-world.md` sample files in `site_dir`. `.gitkeep` is ignored when checking emptiness, so a directory containing only `.gitkeep` is treated as empty. Aborts with a non-zero exit if `site_dir` contains any real files unless `force=True`, in which case all non-`.gitkeep` contents are deleted before writing (preserving `.gitkeep`). Called by `--init`; `--force` maps to `force=True`.
-- `page_needs_rebuild(md_path, out_html, manifest, template_mtime)` returns `True` if the page must be regenerated. Used by `--incremental` mode.
-- Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float}`.
+- `page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime)` returns `True` if the page must be regenerated. Triggers on: missing output, changed source mtime, newer template, or newer config file. Used by `--incremental` mode.
+- Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float, "_config_mtime": float}`.
 - `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed. The event handler ignores events from within `output_dir` and only reacts to source suffixes (`.md`, `.markdown`, `.yaml`, `.css`, `.js`) to prevent build output from triggering a rebuild loop.
 - The entire build pipeline is encapsulated in `_run_build()`, which is called both from `main()` and from the watch rebuild callback.
 
