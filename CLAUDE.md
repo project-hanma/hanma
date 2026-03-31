@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.4.7 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.4.8 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -50,7 +50,7 @@ pip install markdown pygments pymdown-extensions pyyaml watchdog
 # Scaffold a new site with sample content in ./site/
 ./ssg.py --init
 
-# Scaffold into ./site/ even if it already contains files (wipes it first)
+# Scaffold into ./site/ even if it already contains files (wipes non-.gitkeep contents)
 ./ssg.py --init --force
 
 # Generate sitemap.xml and absolute URLs in search.json
@@ -147,7 +147,7 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 - `build_sitemap_xml(pages, output_root, base_url)` writes `sitemap.xml`; returns `None` and does nothing when `base_url` is empty. A "Sitemap" link is also injected into the footer of every generated page via `$sitemap_link` (empty string when `base_url` is unset).
 - `build_search_json(entries, output_root, base_url)` writes `search.json` with `{title, description, url, tags}` per page. The default theme includes a client-side search box in the header that lazily fetches `search.json` on first keystroke and filters results inline — no server required. The URL is injected per-page as `$search_json_url` (relative path accounting for subdirectory depth, or absolute when `base_url` is set).
 - `_search_json_url(out_path, output_root, base_url)` computes the correct URL to `search.json` as seen from a given output page.
-- `init_scaffold(site_dir, force)` creates `index.md`, `about.md`, and `posts/hello-world.md` sample files in `site_dir`. Aborts with a non-zero exit if `site_dir` contains any files at all (not just name conflicts) unless `force=True`, in which case `site_dir` is wiped via `shutil.rmtree` before writing. Called by `--init`; `--force` maps to `force=True`.
+- `init_scaffold(site_dir, force)` creates `index.md`, `about.md`, and `posts/hello-world.md` sample files in `site_dir`. `.gitkeep` is ignored when checking emptiness, so a directory containing only `.gitkeep` is treated as empty. Aborts with a non-zero exit if `site_dir` contains any real files unless `force=True`, in which case all non-`.gitkeep` contents are deleted before writing (preserving `.gitkeep`). Called by `--init`; `--force` maps to `force=True`.
 - `page_needs_rebuild(md_path, out_html, manifest, template_mtime)` returns `True` if the page must be regenerated. Used by `--incremental` mode.
 - Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float}`.
 - `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed. The event handler ignores events from within `output_dir` and only reacts to source suffixes (`.md`, `.markdown`, `.yaml`, `.css`, `.js`) to prevent build output from triggering a rebuild loop.

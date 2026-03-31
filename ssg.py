@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 
 import html
 import json
@@ -1218,13 +1218,20 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
     """
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # Check whether the directory has any contents at all
-    if site_dir.is_dir() and any(site_dir.iterdir()):
+    # Check whether the directory has any real contents (.gitkeep is ignored)
+    real_contents = [
+        p for p in site_dir.iterdir() if p.name != ".gitkeep"
+    ] if site_dir.is_dir() else []
+    if real_contents:
         if not force:
             print(f"Error: '{site_dir}' is not empty.")
             print("Re-run with --force to wipe it and create fresh sample content.")
             sys.exit(1)
-        shutil.rmtree(site_dir)
+        for item in real_contents:
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
 
     site_dir.mkdir(parents=True, exist_ok=True)
 
