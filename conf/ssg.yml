@@ -28,3 +28,6 @@ theme: default
 
 # Only regenerate pages whose source file has changed since the last build.
 # incremental: false
+
+# Label for the posts listing link in the navigation bar.
+# posts_label: Blog

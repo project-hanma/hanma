@@ -7,7 +7,7 @@ Consolidated from two separate analysis documents (feat_req1.md: brainstorm list
 ## Priority 1 — High Impact, Agreed Across Both Sources
 
 **RSS/Atom Feed**
-Both documents independently flag this as top priority. `collect_page_info()` already returns `date`, `title`, and `description` for all pages. Estimated ~40–50 line addition at the end of `main()`.
+Both documents independently flag this as top priority. `collect_page_info()` already returns `title` and `description` for all pages; file mtime is available from `md_path.stat().st_mtime`. Estimated ~40–50 line addition at the end of `main()`.
 
 ~~**Tag Index Pages**~~
 ~~Tags are currently decorative (visual strip + meta keywords) but not navigational. No `tags/python.html` listing exists. Both sources identify this as high-value since the tags are already parsed from front matter — rendering index pages is the only missing step.~~
@@ -45,10 +45,10 @@ Would make `--watch --serve` significantly more pleasant. Requires injecting a s
 ~~An auto-generated page listing all posts sorted by date from front matter. Complements tag index pages.~~
 
 **Previous/Next Post Links**
-"← older" / "newer →" navigation at the bottom of posts, sorted by front matter date.
+"← older" / "newer →" navigation at the bottom of posts, sorted by file modification time.
 
-**Multiple Layouts**
-Front matter `layout: post` vs `layout: page` selects a different template within the theme.
+~~**Multiple Layouts**~~
+~~Front matter `layout: post` vs `layout: page` selects a different template within the theme. Files in `posts/` default to `layout: post`; all others default to `layout: page`. Posts listing (`posts.html`) now includes all `layout: post` pages. Navigation is folder-based: subdirectory index pages become dropdown parents; `posts/` pages are excluded from nav and appear in the posts listing instead.~~
 
 ~~**Incremental Builds**~~
 ~~Only regenerate pages whose source or dependencies have changed.~~

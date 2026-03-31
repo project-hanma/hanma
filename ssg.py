@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.4.7
+Version: 0.5.0
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.8"
+__version__ = "0.5.0"
 
 import html
 import json
@@ -172,7 +172,8 @@ def load_site_config(config_path: Path) -> dict:
         return {}
     if not isinstance(raw, dict):
         return {}
-    allowed = {"name", "base_url", "output", "theme", "serve", "port", "watch", "incremental"}
+    allowed = {"name", "base_url", "output", "theme", "serve", "port", "watch", "incremental",
+               "posts_label"}
     return {k: v for k, v in raw.items() if k in allowed}
 
 
@@ -250,45 +251,155 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
 
 
 def build_nav_html(current_out_html: Path, toc_inner: str,
-                   nav_pages: list[tuple]) -> str:
+                   nav_pages: list[tuple],
+                   output_root: Optional[Path] = None,
+                   posts_out: Optional[Path] = None,
+                   posts_label: str = "Blog") -> str:
     """Build the <ul> content for the sticky nav bar.
 
-    Each page appears as a top-level item.  The current page is marked active
-    and, if it has headings, shows a dropdown with its TOC.  Other pages link
-    directly to their HTML file via a path relative to the current page.
+    Navigation is structured by folder hierarchy, not by headings:
+    - "Home" (root index.md) is always the first item.
+    - Root-level non-index pages appear next as top-level items.
+    - A subdirectory with an index.md becomes a top-level item (using that index's
+      title) with a dropdown listing the other pages in that directory.
+    - Pages with layout='post' outside posts/ are treated as root-level items.
+    - The posts/ directory is excluded from the page-based nav.
+    - If posts_out is provided, a link to it is appended as the last nav item
+      (labelled posts_label, default "Blog").
+    - Headings are no longer used to generate dropdown menu items.
 
-    nav_pages is a list of (out_html_path, title) tuples.
+    nav_pages is a list of (out_html_path, title, md_path, layout) tuples.
+    output_root is the output directory root (used to compute relative depth).
+    posts_out is the Path to the generated posts.html (or None if no posts exist).
+    posts_label is the display label for the posts link.
     """
-    if not nav_pages:
-        return toc_inner  # single-file mode: just the TOC
+    if not nav_pages and posts_out is None:
+        return ""  # single-file mode: no cross-page nav
 
-    items = []
-
-    for page_html, page_title in nav_pages:
-        is_current = page_html == current_out_html
-
-        # Compute a relative URL from current page to target page
+    def _rel_url(target: Path) -> str:
         try:
-            rel_url = os.path.relpath(page_html, current_out_html.parent)
+            return os.path.relpath(target, current_out_html.parent)
         except ValueError:
-            rel_url = page_html.as_posix()  # different drive on Windows
+            return target.as_posix()
 
-        safe_url = html.escape(rel_url, quote=True)
+    def _li(page_html: Path, page_title: str, dropdown_items: list[str] = None) -> str:
+        is_current = page_html == current_out_html
+        safe_url = html.escape(_rel_url(page_html), quote=True)
         safe_title = html.escape(page_title)
-        if is_current:
-            # Active page — show TOC as dropdown if available
-            dropdown = f"\n{toc_inner}" if toc_inner else ""
-            items.append(
-                f'  <li class="nav-current">\n'
-                f'    <a href="{safe_url}" aria-current="page">{safe_title}</a>'
-                f'{dropdown}\n  </li>'
+        css = ' class="nav-current"' if is_current else ""
+        aria = ' aria-current="page"' if is_current else ""
+        if dropdown_items:
+            drop_html = "\n    <ul>\n" + "".join(
+                f'      <li><a href="{u}">{t}</a></li>\n'
+                for u, t in dropdown_items
+            ) + "    </ul>"
+            return (
+                f'  <li{css}>\n'
+                f'    <a href="{safe_url}"{aria}>{safe_title}</a>'
+                f'{drop_html}\n  </li>'
             )
+        return f'  <li{css}>\n    <a href="{safe_url}"{aria}>{safe_title}</a>\n  </li>'
+
+    # Determine the depth of each page relative to output_root so we can
+    # classify pages as root-level vs inside a subdirectory.
+    def _depth(page_html: Path) -> int:
+        if output_root is None:
+            return 0
+        try:
+            return len(page_html.relative_to(output_root).parts) - 1
+        except ValueError:
+            return 0
+
+    # Group pages by their parent directory (relative to output_root).
+    # Structure: {dir_key: {"index": entry|None, "children": [entry, ...]}}
+    # dir_key = "" for root, else the relative dir string.
+    # entry = (out_html_path, title, md_path, layout)
+    from collections import OrderedDict
+    groups: dict = OrderedDict()
+
+    POSTS_DIR_NAME = "posts"
+
+    for entry in nav_pages:
+        page_html, page_title, md_path, layout = entry
+        depth = _depth(page_html)
+
+        # Determine the group key (the directory relative to output_root)
+        if output_root is not None:
+            try:
+                rel_parts = page_html.relative_to(output_root).parts
+            except ValueError:
+                rel_parts = (page_html.name,)
         else:
-            items.append(
-                f'  <li>\n'
-                f'    <a href="{safe_url}">{safe_title}</a>\n'
-                f'  </li>'
-            )
+            rel_parts = (page_html.name,)
+
+        if depth == 0:
+            dir_key = ""
+        else:
+            dir_key = rel_parts[0]  # top-level subdirectory name
+
+        # Skip the posts/ directory — it's represented by the posts listing page
+        if dir_key == POSTS_DIR_NAME:
+            continue
+
+        if dir_key not in groups:
+            groups[dir_key] = {"index": None, "children": []}
+
+        is_dir_index = depth > 0 and page_html.stem.lower() == "index"
+        if is_dir_index:
+            groups[dir_key]["index"] = entry
+        else:
+            groups[dir_key]["children"].append(entry)
+
+    # Separate root-level home (index.html) from other root pages so we can
+    # guarantee Home is always the first nav item.
+    home_item: Optional[str] = None
+    other_items: list[str] = []
+
+    for dir_key, group in groups.items():
+        if dir_key == "":
+            # Root-level pages: home first, rest in discovery order
+            for entry in group["children"]:
+                page_html, page_title, md_path, layout = entry
+                li = _li(page_html, page_title)
+                if page_html.stem.lower() == "index" and (
+                    output_root is None or page_html.parent == output_root
+                ):
+                    home_item = li
+                else:
+                    other_items.append(li)
+        else:
+            idx = group["index"]
+            children = group["children"]
+            if idx is not None:
+                # Directory with an index: top-level item = index, dropdown = children
+                idx_html, idx_title, _, _ = idx
+                dropdown = []
+                for child_html, child_title, _, _ in children:
+                    safe_u = html.escape(_rel_url(child_html), quote=True)
+                    safe_t = html.escape(child_title)
+                    is_cur = child_html == current_out_html
+                    cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
+                    dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
+                other_items.append(_li(idx_html, idx_title, dropdown if dropdown else None))
+            else:
+                # No index — render each child as its own top-level item
+                for entry in children:
+                    page_html, page_title, md_path, layout = entry
+                    other_items.append(_li(page_html, page_title))
+
+    items = ([home_item] if home_item else []) + other_items
+
+    # Append posts listing link last (if posts exist)
+    if posts_out is not None:
+        is_cur = posts_out == current_out_html
+        safe_url = html.escape(_rel_url(posts_out), quote=True)
+        safe_label = html.escape(posts_label)
+        css = ' class="nav-current"' if is_cur else ""
+        aria = ' aria-current="page"' if is_cur else ""
+        items.append(f'  <li{css}>\n    <a href="{safe_url}"{aria}>{safe_label}</a>\n  </li>')
+
+    if not items:
+        return ""
 
     return "\n<ul>\n" + "\n".join(items) + "\n</ul>\n"
 
@@ -330,7 +441,10 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                        template: Optional[string.Template] = None,
                        tags_out_dir: Optional[Path] = None,
                        base_url: str = "",
-                       output_root: Optional[Path] = None) -> Path:
+                       output_root: Optional[Path] = None,
+                       layout: str = "page",
+                       posts_out: Optional[Path] = None,
+                       posts_label: str = "Blog") -> Path:
     """Read a .md file and write the HTML output to out_path.
 
     nav_pages is a list of (out_html_path, title) tuples for every page being
@@ -440,7 +554,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     else:
         toc_inner = re.sub(r'</?div[^>]*>', '', toc_html).strip()
 
-    nav_html = build_nav_html(out_path, toc_inner, nav_pages or [])
+    nav_html = build_nav_html(out_path, toc_inner, nav_pages or [],
+                              output_root=output_root,
+                              posts_out=posts_out, posts_label=posts_label)
 
     now = datetime.now()
     date_str = now.strftime("%B %d, %Y")
@@ -571,9 +687,13 @@ def _make_generated_page(content_html: str, title: str, description: str,
                           nav_pages: list[tuple],
                           template: string.Template,
                           sitemap_link: str = "",
-                          search_json_url: str = "search.json") -> Path:
+                          search_json_url: str = "search.json",
+                          output_root: Optional[Path] = None,
+                          posts_out: Optional[Path] = None,
+                          posts_label: str = "Blog") -> Path:
     """Render a generated (non-markdown) page using the active theme template."""
-    nav_html = build_nav_html(out_path, "", nav_pages)
+    nav_html = build_nav_html(out_path, "", nav_pages, output_root=output_root,
+                              posts_out=posts_out, posts_label=posts_label)
     now = datetime.now()
     titles_match = site_name and title.lower() == site_name.lower()
     if site_name and not titles_match:
@@ -607,7 +727,9 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
                           site_name: str, nav_pages: list[tuple],
                           template: string.Template,
                           base_url: str = "",
-                          output_root: Optional[Path] = None) -> Path:
+                          output_root: Optional[Path] = None,
+                          posts_out: Optional[Path] = None,
+                          posts_label: str = "Blog") -> Path:
     """Generate a tag index page listing all pages tagged with tag.
 
     pages is a list of (out_html_path, title, date_str) tuples, sorted by date.
@@ -635,6 +757,8 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
         out_path, site_name, nav_pages, template,
         sitemap_link='<a href="../sitemap.xml">Sitemap</a>' if base_url else "",
         search_json_url=_search_json_url(out_path, output_root, base_url),
+        output_root=output_root,
+        posts_out=posts_out, posts_label=posts_label,
     )
 
 
@@ -642,15 +766,19 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                               site_name: str, nav_pages: list[tuple],
                               template: string.Template,
                               base_url: str = "",
-                              output_root: Optional[Path] = None) -> Path:
-    """Generate posts.html listing all pages with a date field, newest first.
+                              output_root: Optional[Path] = None,
+                              posts_label: str = "Blog",
+                              posts_out: Optional[Path] = None) -> Path:
+    """Generate posts.html listing all layout='post' pages, newest first.
 
-    dated_pages is a list of (out_html_path, title, date_obj, description) tuples.
+    dated_pages is a list of (out_html_path, title, mtime_dt, description) tuples.
+    mtime_dt is the file's modification time; used for both sorting and display.
     """
-    # Sort newest first
+    # Sort newest-first by mtime.
     sorted_pages = sorted(dated_pages, key=lambda t: t[2], reverse=True)
+
     items = []
-    for page_html_path, page_title, date_obj, description in sorted_pages:
+    for page_html_path, page_title, mtime_dt, description in sorted_pages:
         try:
             rel_url = html.escape(
                 os.path.relpath(page_html_path, out_path.parent), quote=True
@@ -658,22 +786,31 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
         except ValueError:
             rel_url = page_html_path.as_posix()
         safe_title = html.escape(page_title)
-        date_str = html.escape(date_obj.strftime("%B %d, %Y"))
+        date_str = html.escape(mtime_dt.strftime("%-m/%-d/%Y @ %I:%M %p"))
+        date_span = f' <span class="post-date">{date_str}</span>'
         desc_html = f'\n    <p class="post-desc">{html.escape(description)}</p>' if description else ""
         items.append(
             f'  <li>\n'
             f'    <a href="{rel_url}">{safe_title}</a>'
-            f' <span class="post-date">{date_str}</span>'
+            f'{date_span}'
             f'{desc_html}\n  </li>'
         )
 
     items_html = "\n".join(items) if items else "  <li><em>No posts found.</em></li>"
-    content_html = f'<h1>All Posts</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
+    safe_label = html.escape(posts_label)
+    content_html = f'<h1>{safe_label}</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
+    # Compute depth-aware sitemap link (posts/index.html is one level deep)
+    if base_url:
+        sitemap_link = '<a href="../sitemap.xml">Sitemap</a>'
+    else:
+        sitemap_link = ""
     return _make_generated_page(
-        content_html, "All Posts", "A chronological listing of all posts.",
+        content_html, posts_label, f"A listing of all {posts_label.lower()} posts.",
         out_path, site_name, nav_pages, template,
-        sitemap_link='<a href="sitemap.xml">Sitemap</a>' if base_url else "",
+        sitemap_link=sitemap_link,
         search_json_url=_search_json_url(out_path, output_root, base_url),
+        output_root=output_root,
+        posts_out=posts_out, posts_label=posts_label,
     )
 
 
@@ -737,6 +874,7 @@ def build_search_json(entries: list[dict], output_root: Path,
 # ─────────────────────────────────────────────────────────────────────────────
 
 _MANIFEST_TEMPLATE_KEY = "_template_mtime"
+_MANIFEST_CONFIG_KEY   = "_config_mtime"
 
 
 def load_build_manifest(manifest_path: Path) -> dict:
@@ -760,13 +898,14 @@ def save_build_manifest(manifest_path: Path, manifest: dict) -> None:
 
 
 def page_needs_rebuild(md_path: Path, out_html: Path, manifest: dict,
-                        template_mtime: float) -> bool:
+                        template_mtime: float, config_mtime: float = 0.0) -> bool:
     """Return True if md_path should be regenerated.
 
     Triggers rebuild if:
     - out_html does not exist
     - md_path mtime differs from manifest entry
     - template_mtime is newer than the manifest's recorded template_mtime
+    - config_mtime is newer than the manifest's recorded config_mtime
     """
     if not out_html.exists():
         return True
@@ -779,6 +918,8 @@ def page_needs_rebuild(md_path: Path, out_html: Path, manifest: dict,
         return True
     if template_mtime > manifest.get(_MANIFEST_TEMPLATE_KEY, 0.0):
         return True
+    if config_mtime > manifest.get(_MANIFEST_CONFIG_KEY, 0.0):
+        return True
     return False
 
 
@@ -790,7 +931,9 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
                template: string.Template, theme_dir: Path,
                base_url: str = "", incremental: bool = False,
                manifest_path: Optional[Path] = None,
-               dry_run: bool = False) -> tuple[int, int, int]:
+               dry_run: bool = False,
+               posts_label: str = "Blog",
+               config_path: Optional[Path] = None) -> tuple[int, int, int]:
     """Run a full site build. Returns (ok, errors, skipped)."""
 
     files = find_markdown_files(root)
@@ -803,6 +946,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     # ── Load build manifest for incremental builds ────────────────────────
     manifest: dict = {}
     template_mtime = 0.0
+    config_mtime = 0.0
     if incremental and manifest_path is not None:
         manifest = load_build_manifest(manifest_path)
         template_html = theme_dir / "template.html"
@@ -810,13 +954,20 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
             template_mtime = template_html.stat().st_mtime
         except OSError:
             pass
+        if config_path is not None:
+            try:
+                config_mtime = config_path.stat().st_mtime
+            except OSError:
+                pass
 
     # ── Pass 1: collect titles, output paths, and derived data ───────────
-    all_files: list[tuple] = []
+    all_files: list[tuple] = []  # (md_path, out_html, title, layout)
     drafts = 0
     tags_map: dict[str, list] = {}      # tag -> [(out_html, title, date_str)]
     dated_pages: list[tuple] = []       # [(out_html, title, date_obj, description)]
     search_entries: list[dict] = []
+
+    POSTS_DIR_NAME = "posts"
 
     for md_path in files:
         title, description, front = collect_page_info(md_path)
@@ -824,11 +975,20 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
             print(f"  [draft] skipping {md_path.name}")
             drafts += 1
             continue
-        if md_path.stem.lower() == "index":
-            title = "Home"
         rel = md_path.relative_to(root)
+        # Only the root-level index.md is titled "Home"; subdir index.md keeps its own title.
+        if md_path.stem.lower() == "index" and len(rel.parts) == 1:
+            title = "Home"
         out_html = output_dir / rel.with_suffix(".html")
-        all_files.append((md_path, out_html, title))
+
+        # Determine layout: front matter overrides directory-based default.
+        # Files under posts/ default to 'post'; everything else defaults to 'page'.
+        rel_parts = rel.parts
+        in_posts_dir = len(rel_parts) > 1 and rel_parts[0] == POSTS_DIR_NAME
+        default_layout = "post" if in_posts_dir else "page"
+        layout = str(front.get("layout", default_layout)).strip().lower()
+
+        all_files.append((md_path, out_html, title, layout))
 
         # Collect tags
         fm_tags = front.get("tags", [])
@@ -849,17 +1009,15 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
                         pass
                 tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
 
-        # Collect dated pages for posts listing
-        fm_date_raw = front.get("date")
-        if fm_date_raw is not None:
+        # Collect pages for posts listing: all layout='post' pages go here.
+        # dated_pages entries: (out_html, title, mtime_dt, description)
+        # mtime_dt is the file's modification time, used for both sorting and display.
+        if layout == "post":
             try:
-                if isinstance(fm_date_raw, str):
-                    date_obj = datetime.strptime(fm_date_raw, "%Y-%m-%d")
-                else:
-                    date_obj = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
-                dated_pages.append((out_html, title, date_obj, description))
-            except (ValueError, AttributeError):
-                pass
+                mtime_dt = datetime.fromtimestamp(md_path.stat().st_mtime)
+            except OSError:
+                mtime_dt = datetime.min
+            dated_pages.append((out_html, title, mtime_dt, description))
 
         # Collect search entry
         try:
@@ -876,14 +1034,31 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     # index.html always listed first, everything else in discovery order
     all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
 
-    # Single-file invocations get no cross-page nav (nothing to link to)
-    nav_pages = [(out_html, title) for _, out_html, title in all_files] if len(all_files) > 1 else []
+    # Single-file invocations get no cross-page nav (nothing to link to).
+    # nav_pages entries: (out_html, title, md_path, layout)
+    # Posts with layout='post' from OUTSIDE the posts/ dir are included in nav.
+    # Pages inside posts/ are excluded from nav (they appear in posts listing).
+    def _in_posts_dir(md_path: Path) -> bool:
+        try:
+            rel_parts = md_path.relative_to(root).parts
+            return len(rel_parts) > 1 and rel_parts[0] == POSTS_DIR_NAME
+        except ValueError:
+            return False
+
+    nav_pages = (
+        [
+            (out_html, title, md_path, layout)
+            for md_path, out_html, title, layout in all_files
+            if not _in_posts_dir(md_path)
+        ]
+        if len(all_files) > 1 else []
+    )
 
     # Compute tags output directory
     tags_out_dir = output_dir / "tags"
 
     # ── Compute expected HTML (includes generated pages) ─────────────────
-    expected_html: set[Path] = {out_html for _, out_html, _ in all_files}
+    expected_html: set[Path] = {out_html for _, out_html, _, _ in all_files}
 
     # Tag index pages
     tag_out_paths: dict[str, Path] = {}
@@ -893,11 +1068,18 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         tag_out_paths[tag] = tag_out_path
         expected_html.add(tag_out_path)
 
-    # Posts listing page (skip if posts.md already exists as a source)
-    posts_out = output_dir / "posts.html"
-    posts_collision = any(out_html == posts_out for _, out_html, _ in all_files)
-    if dated_pages and not posts_collision:
-        expected_html.add(posts_out)
+    # Posts listing page — written to output/posts/index.html so that the
+    # /posts/ URL serves the listing directly (no directory listing fallback).
+    # Skipped if posts/index.md already exists as a source file.
+    posts_out_path = output_dir / "posts" / "index.html"
+    posts_collision = any(out_html == posts_out_path for _, out_html, _, _ in all_files)
+    has_posts_listing = bool(dated_pages) and not posts_collision
+    if has_posts_listing:
+        expected_html.add(posts_out_path)
+
+    # nav_posts_out: path passed to build_nav_html so every page links to the listing.
+    # None when there are no posts or posts/index.md exists as a source file.
+    nav_posts_out = posts_out_path if has_posts_listing else None
 
     # Search index and sitemap are not HTML so not added to expected_html
 
@@ -925,7 +1107,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     skipped = 0
 
     # ── Pass 2: generate HTML with full nav ───────────────────────────────
-    for md_path, out_html, _title in all_files:
+    for md_path, out_html, _title, layout in all_files:
         try:
             rel = md_path.relative_to(root)
         except ValueError:
@@ -940,7 +1122,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
             continue
 
         # Incremental skip check
-        if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime):
+        if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime):
             try:
                 out_rel = out_html.relative_to(output_dir)
             except ValueError:
@@ -956,6 +1138,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
                 nav_pages=nav_pages, template=template,
                 tags_out_dir=tags_out_dir,
                 base_url=base_url, output_root=output_dir,
+                layout=layout,
+                posts_out=nav_posts_out, posts_label=posts_label,
             )
             print(f"  ✓  {rel}  →  {out}")
             ok += 1
@@ -977,12 +1161,12 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
                 except ValueError:
                     out_rel = slug_path
                 print(f"  [dry-run] (tag index) tags/{_normalize_tag(tag)}.html  →  {out_rel}")
-        if dated_pages and not posts_collision:
+        if has_posts_listing:
             try:
-                pr = posts_out.relative_to(Path.cwd())
+                pr = posts_out_path.relative_to(Path.cwd())
             except ValueError:
-                pr = posts_out
-            print(f"  [dry-run] (posts listing) posts.html  →  {pr}")
+                pr = posts_out_path
+            print(f"  [dry-run] (posts listing) posts/index.html  →  {pr}")
         return ok, errors, skipped
 
     # ── Generate tag index pages ──────────────────────────────────────────
@@ -1000,28 +1184,30 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         tag_pages_sorted = sorted(tag_pages, key=_sort_key, reverse=True)
         try:
             build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
-                             base_url=base_url, output_root=output_dir)
+                             base_url=base_url, output_root=output_dir,
+                             posts_out=nav_posts_out, posts_label=posts_label)
             print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
         except Exception as exc:
             print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
             errors += 1
 
     # ── Generate posts listing page ───────────────────────────────────────
-    if dated_pages and not posts_collision:
+    if has_posts_listing:
         try:
-            build_posts_listing_html(dated_pages, posts_out, site_name, nav_pages, template,
-                                     base_url=base_url, output_root=output_dir)
-            print(f"  [posts] posts.html  ({len(dated_pages)} post(s))")
+            build_posts_listing_html(dated_pages, posts_out_path, site_name, nav_pages, template,
+                                     base_url=base_url, output_root=output_dir,
+                                     posts_label=posts_label, posts_out=nav_posts_out)
+            print(f"  [posts] posts/index.html  ({len(dated_pages)} post(s))")
         except Exception as exc:
-            print(f"  [posts] ERROR generating posts.html: {exc}")
+            print(f"  [posts] ERROR generating posts/index.html: {exc}")
             errors += 1
     elif posts_collision:
-        print("  [posts] skipped: posts.md exists as source file")
+        print("  [posts] skipped: posts/index.md exists as source file")
 
     # ── Generate sitemap.xml ──────────────────────────────────────────────
     if base_url:
         sitemap_pages = []
-        for _, out_html, _ in all_files:
+        for _, out_html, _, _ in all_files:
             try:
                 mtime = out_html.stat().st_mtime
                 lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
@@ -1039,6 +1225,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     # ── Save build manifest ───────────────────────────────────────────────
     if incremental and manifest_path is not None:
         manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
+        manifest[_MANIFEST_CONFIG_KEY] = config_mtime
         save_build_manifest(manifest_path, manifest)
 
     if not dry_run:
@@ -1094,7 +1281,9 @@ class _SsgEventHandler(_WatchdogHandler):
 
 def _watch_polling(root: Path, output_dir: Path, site_name: str,
                    template: string.Template, theme_dir: Path,
-                   base_url: str = "", poll_interval: float = 1.0) -> None:
+                   base_url: str = "", poll_interval: float = 1.0,
+                   posts_label: str = "Blog",
+                   config_path: Optional[Path] = None) -> None:
     """Fallback polling-based watch (used when watchdog is not available)."""
     print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
@@ -1121,7 +1310,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
             if changed or deleted:
                 print(f"\n  [watch] change detected, rebuilding...")
                 _run_build(root, output_dir, site_name, template, theme_dir,
-                           base_url=base_url)
+                           base_url=base_url, posts_label=posts_label,
+                           config_path=config_path)
             last_mtimes = current_mtimes
             files = current_files
     except KeyboardInterrupt:
@@ -1131,7 +1321,9 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
 def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
                       template: string.Template, theme_dir: Path,
                       base_url: str = "",
-                      poll_interval: float = 1.0) -> None:
+                      poll_interval: float = 1.0,
+                      posts_label: str = "Blog",
+                      config_path: Optional[Path] = None) -> None:
     """Watch source files and regenerate on changes.
 
     Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
@@ -1139,14 +1331,16 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     """
     if not _WATCHDOG_AVAILABLE:
         _watch_polling(root, output_dir, site_name, template, theme_dir,
-                       base_url=base_url, poll_interval=poll_interval)
+                       base_url=base_url, poll_interval=poll_interval,
+                       posts_label=posts_label, config_path=config_path)
         return
 
     def rebuild():
         print(f"\n  [watch] change detected, rebuilding...")
         try:
             _run_build(root, output_dir, site_name, template, theme_dir,
-                       base_url=base_url)
+                       base_url=base_url, posts_label=posts_label,
+                       config_path=config_path)
         except Exception as exc:
             print(f"  [watch] build error: {exc}")
 
@@ -1414,10 +1608,11 @@ Examples:
     site_config = load_site_config(config_path)
 
     # ── Merge CLI args with config (CLI always wins) ───────────────────────
-    site_name  = args.name     if args.name     is not None else site_config.get("name",   "Blog")
-    theme_name = args.theme    if args.theme    is not None else site_config.get("theme",  "default")
-    base_url   = args.base_url if args.base_url is not None else site_config.get("base_url", "")
-    output_arg = args.output   if args.output   is not None else site_config.get("output", None)
+    site_name   = args.name     if args.name     is not None else site_config.get("name",   "Blog")
+    theme_name  = args.theme    if args.theme    is not None else site_config.get("theme",  "default")
+    base_url    = args.base_url if args.base_url is not None else site_config.get("base_url", "")
+    output_arg  = args.output   if args.output   is not None else site_config.get("output", None)
+    posts_label = str(site_config.get("posts_label", "Blog"))
 
     # Boolean/int flags: CLI flag presence overrides config; config overrides built-in default
     # --serve is a nargs="?" int (None = not passed, 8000 = passed without value)
@@ -1497,6 +1692,8 @@ Examples:
         incremental=effective_incremental,
         manifest_path=manifest_path,
         dry_run=args.dry_run,
+        posts_label=posts_label,
+        config_path=config_path,
     )
 
     if args.dry_run:
@@ -1507,13 +1704,15 @@ Examples:
             watch_thread = threading.Thread(
                 target=watch_and_rebuild,
                 args=(root, output_dir, site_name, theme_template, theme_dir),
-                kwargs={"base_url": base_url},
+                kwargs={"base_url": base_url, "posts_label": posts_label,
+                        "config_path": config_path},
                 daemon=True,
             )
             watch_thread.start()
         else:
             watch_and_rebuild(root, output_dir, site_name, theme_template, theme_dir,
-                              base_url=base_url)
+                              base_url=base_url, posts_label=posts_label,
+                              config_path=config_path)
             return
 
     if effective_serve:
