@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-ssg.py — Static Site Generator
+hanma.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
 Version: 0.5.0
 
 Usage:
-    python ssg.py [directory]
+    python hanma.py [directory]
 
 If no directory is given, ./site/ is used (falling back to the current directory).
 All .md files found in the directory tree are converted to .html
@@ -155,11 +155,11 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SITE CONFIG FILE (ssg.yml)
+# SITE CONFIG FILE (hanma.yml)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_site_config(config_path: Path) -> dict:
-    """Load ssg.yml (or ssg.yaml) from config_path. Returns {} if absent or invalid.
+    """Load hanma.yml (or hanma.yaml) from config_path. Returns {} if absent or invalid.
 
     Recognized fields: name, base_url, output, theme, serve, port, watch, incremental.
     """
@@ -1240,7 +1240,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 # WATCH MODE (watchdog-based)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class _SsgEventHandler(_WatchdogHandler):
+class _HanmaEventHandler(_WatchdogHandler):
     """Watchdog event handler: triggers a debounced rebuild on any relevant change."""
 
     _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".css", ".js"}
@@ -1344,7 +1344,7 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
         except Exception as exc:
             print(f"  [watch] build error: {exc}")
 
-    handler = _SsgEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
+    handler = _HanmaEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
     observer = Observer()
     observer.schedule(handler, str(root), recursive=True)
     if theme_dir != root and not theme_dir.is_relative_to(root):
@@ -1373,9 +1373,9 @@ description: Welcome to my site.
 
 # Welcome
 
-This is the home page of your new site, built with **ssg.py**.
+This is the home page of your new site, built with **hanma.py**.
 
-Edit the Markdown files in `site/` and run `./ssg.py` to regenerate.
+Edit the Markdown files in `site/` and run `./hanma.py` to regenerate.
 """,
     "about.md": """\
 ---
@@ -1435,7 +1435,7 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
         dest.write_text(content.format(today=today), encoding="utf-8")
         print(f"  [create] {rel}")
 
-    print(f"\nScaffold written to '{site_dir}'.  Run ./ssg.py to build.")
+    print(f"\nScaffold written to '{site_dir}'.  Run ./hanma.py to build.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1444,26 +1444,26 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
 
 def main() -> None:
     if sys.version_info < (3, 10):
-        sys.exit("Error: ssg.py requires Python 3.10 or later.")
+        sys.exit("Error: hanma.py requires Python 3.10 or later.")
 
     parser = argparse.ArgumentParser(
         description="Convert Markdown files to HTML, recursively.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./ssg.py                                      # Process ./site/ (default, in-place)
-  ./ssg.py site/sample.md                       # Convert a single file
-  ./ssg.py site/                                # Explicit site directory (in-place)
-  ./ssg.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
-  ./ssg.py --name "My Blog" --serve             # Named site with local server
-  ./ssg.py --output dist/ --serve               # Serve from output directory
-  ./ssg.py --incremental                        # Only rebuild changed pages
+  ./hanma.py                                      # Process ./site/ (default, in-place)
+  ./hanma.py site/sample.md                       # Convert a single file
+  ./hanma.py site/                                # Explicit site directory (in-place)
+  ./hanma.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
+  ./hanma.py --name "My Blog" --serve             # Named site with local server
+  ./hanma.py --output dist/ --serve               # Serve from output directory
+  ./hanma.py --incremental                        # Only rebuild changed pages
         """,
     )
     parser.add_argument(
         "--version",
         action="version",
-        version=f"ssg.py {__version__}",
+        version=f"hanma.py {__version__}",
     )
     parser.add_argument(
         "path",
@@ -1475,7 +1475,7 @@ Examples:
         "--name",
         default=None,
         metavar="SITE_NAME",
-        help='Site name shown in the header (default: from ssg.yml or "Blog")',
+        help='Site name shown in the header (default: from hanma.yml or "Blog")',
     )
     parser.add_argument(
         "--base-url",
@@ -1500,7 +1500,7 @@ Examples:
         "--output",
         default=None,
         metavar="DIR",
-        help="Directory to write generated HTML files (default: output/ relative to ssg.py, not cwd)",
+        help="Directory to write generated HTML files (default: output/ relative to hanma.py, not cwd)",
     )
     parser.add_argument(
         "--port",
@@ -1518,7 +1518,7 @@ Examples:
         "--theme",
         default=None,
         metavar="NAME",
-        help='Theme to use from the themes/ directory (default: from ssg.yml or "default")',
+        help='Theme to use from the themes/ directory (default: from hanma.yml or "default")',
     )
     parser.add_argument(
         "--list-themes",
@@ -1534,7 +1534,7 @@ Examples:
         "--config",
         default=None,
         metavar="FILE",
-        help="Path to config file (default: conf/ssg.yml next to ssg.py, then ssg.yml in source directory)",
+        help="Path to config file (default: conf/hanma.yml next to hanma.py, then hanma.yml in source directory)",
     )
     parser.add_argument(
         "--init",
@@ -1590,15 +1590,15 @@ Examples:
         print(f"Error: '{target}' is not a file or directory.")
         sys.exit(1)
 
-    # ── Load site config (ssg.yml / ssg.yaml) ─────────────────────────────
-    # Lookup order: --config flag > conf/ssg.yml (next to ssg.py) > ssg.yml in source root
-    #               > ssg.yaml in source root (legacy fallback)
+    # ── Load site config (hanma.yml / hanma.yaml) ────────────────────────────
+    # Lookup order: --config flag > conf/hanma.yml (next to hanma.py) > hanma.yml in source root
+    #               > hanma.yaml in source root (legacy fallback)
     def _find_default_config(base: Path) -> Path:
-        for name in ("ssg.yml", "ssg.yaml"):
+        for name in ("hanma.yml", "hanma.yaml"):
             p = base / name
             if p.is_file():
                 return p
-        return base / "ssg.yml"  # non-existent sentinel; load_site_config returns {}
+        return base / "hanma.yml"  # non-existent sentinel; load_site_config returns {}
 
     if args.config is not None:
         config_path = Path(args.config).resolve()
@@ -1667,7 +1667,7 @@ Examples:
     theme_template, theme_dir = load_theme(theme_name)
 
     # ── Manifest path for incremental builds ─────────────────────────────
-    manifest_path = output_dir / ".ssg_manifest.json" if effective_incremental else None
+    manifest_path = output_dir / ".hanma_manifest.json" if effective_incremental else None
 
     # ── Run the build ─────────────────────────────────────────────────────
     print(f"Building '{site_name}'  →  {output_dir}\n")

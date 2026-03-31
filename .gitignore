@@ -8,3 +8,4 @@ conf/test.yml
 site/*
 !site/.gitkeep
 site_bak/
+prompts.md
