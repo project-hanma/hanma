@@ -1,7 +1,10 @@
 # ssg.py
 
 <p align="center">
-  <img src="assets/hanma_logo_dark_final.svg" alt="ssg.py logo" width="400" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/hanma_logo_dark_final.svg">
+    <img src="assets/hanma_logo_light_final.svg" alt="半間 hanma" width="400" />
+  </picture>
 </p>
 
 A static site generator that does what it needs to and stops there. No roadmap,
