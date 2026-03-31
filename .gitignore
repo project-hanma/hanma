@@ -1,5 +1,6 @@
 .venv
 .claude
+.prompt
 output
 __pycache__
 .pytest_cache
