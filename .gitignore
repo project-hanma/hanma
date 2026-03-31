@@ -5,3 +5,6 @@ __pycache__
 .pytest_cache
 repository_audit*
 conf/test.yml
+site/*
+!site/.gitkeep
+site_bak/
