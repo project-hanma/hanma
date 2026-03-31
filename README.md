@@ -1,7 +1,5 @@
-# hanma.py
-
 <p align="center">
-  <img src="assets/hanma_logo_universal.svg" alt="hanma.py logo" width="400" />
+  <img src="assets/hanma_logo_universal_dark.svg" alt="hanma.py logo" width="400" />
 </p>
 
 A static site generator that does what it needs to and stops there. No roadmap,
