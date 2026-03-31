@@ -1,5 +1,5 @@
 """
-Tests for ssg.py — syntax, file discovery, conversion, CLI behaviour.
+Tests for hanma.py — syntax, file discovery, conversion, CLI behaviour.
 Run with: python -m pytest tests/
 """
 
@@ -16,11 +16,11 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-SSG = Path(__file__).parent.parent / "ssg.py"
+SSG = Path(__file__).parent.parent / "hanma.py"
 
 
 def run(*args, cwd=None, expect_ok=True):
-    """Run ssg.py with the given arguments and return CompletedProcess."""
+    """Run hanma.py with the given arguments and return CompletedProcess."""
     result = subprocess.run(
         [sys.executable, str(SSG), *args],
         capture_output=True,
@@ -29,7 +29,7 @@ def run(*args, cwd=None, expect_ok=True):
     )
     if expect_ok and result.returncode != 0:
         pytest.fail(
-            f"ssg.py exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"hanma.py exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     return result
 
@@ -44,9 +44,9 @@ def write(path: Path, content: str) -> Path:
 # Import the module under test so we can call functions directly
 # ---------------------------------------------------------------------------
 
-spec = importlib.util.spec_from_file_location("ssg", SSG)
-ssg = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(ssg)
+spec = importlib.util.spec_from_file_location("hanma", SSG)
+hanma = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hanma)
 
 
 # ===========================================================================
@@ -56,11 +56,11 @@ spec.loader.exec_module(ssg)
 
 class TestSyntax:
     def test_module_imports_cleanly(self):
-        assert ssg is not None
+        assert hanma is not None
 
     def test_version_string_present(self):
-        assert hasattr(ssg, "__version__")
-        assert ssg.__version__
+        assert hasattr(hanma, "__version__")
+        assert hanma.__version__
 
     def test_py_compile(self):
         import py_compile
@@ -88,7 +88,7 @@ class TestVersionFlag:
             text=True,
         )
         combined = result.stdout + result.stderr
-        assert ssg.__version__ in combined
+        assert hanma.__version__ in combined
 
 
 # ===========================================================================
@@ -98,41 +98,41 @@ class TestVersionFlag:
 
 class TestExtractTitle:
     def test_h1_extracted(self):
-        assert ssg.extract_title("# Hello World\n\nParagraph.", "fallback") == "Hello World"
+        assert hanma.extract_title("# Hello World\n\nParagraph.", "fallback") == "Hello World"
 
     def test_fallback_used_when_no_h1(self):
-        assert ssg.extract_title("Just a paragraph.", "my-file") == "my-file"
+        assert hanma.extract_title("Just a paragraph.", "my-file") == "my-file"
 
     def test_fallback_is_not_used_when_h1_present(self):
-        result = ssg.extract_title("# Real Title\nText.", "should-not-appear")
+        result = hanma.extract_title("# Real Title\nText.", "should-not-appear")
         assert result == "Real Title"
 
     def test_h1_with_extra_whitespace(self):
-        assert ssg.extract_title("#   Spaced Title  \n", "fb") == "Spaced Title"
+        assert hanma.extract_title("#   Spaced Title  \n", "fb") == "Spaced Title"
 
     def test_h2_not_treated_as_title(self):
-        result = ssg.extract_title("## Section\nText.", "fallback")
+        result = hanma.extract_title("## Section\nText.", "fallback")
         assert result == "fallback"
 
 
 class TestExtractDescription:
     def test_first_paragraph_used(self):
         md = "# Title\n\nThis is the intro paragraph.\n\n## Section\n"
-        desc = ssg.extract_description(md)
+        desc = hanma.extract_description(md)
         assert "intro paragraph" in desc
 
     def test_heading_lines_skipped(self):
         md = "# Title\n## Sub\nThis is text."
-        desc = ssg.extract_description(md)
+        desc = hanma.extract_description(md)
         assert desc == "This is text."
 
     def test_truncated_to_160_chars(self):
         md = "# T\n\n" + ("word " * 50)
-        desc = ssg.extract_description(md, max_chars=160)
+        desc = hanma.extract_description(md, max_chars=160)
         assert len(desc) <= 160
 
     def test_empty_file_returns_empty(self):
-        assert ssg.extract_description("") == ""
+        assert hanma.extract_description("") == ""
 
 
 # ===========================================================================
@@ -144,44 +144,44 @@ class TestFindMarkdownFiles:
     def test_discovers_md_files(self, tmp_path):
         write(tmp_path / "a.md", "# A")
         write(tmp_path / "b.md", "# B")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         names = {p.name for p in found}
         assert names == {"a.md", "b.md"}
 
     def test_recurses_into_subdirectories(self, tmp_path):
         write(tmp_path / "sub" / "deep.md", "# Deep")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         assert any(p.name == "deep.md" for p in found)
 
     def test_skips_dotdirs(self, tmp_path):
         write(tmp_path / ".hidden" / "secret.md", "# Secret")
         write(tmp_path / "visible.md", "# Visible")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         assert all(p.name != "secret.md" for p in found)
 
     def test_skips_readme(self, tmp_path):
         write(tmp_path / "README.md", "# Readme")
         write(tmp_path / "page.md", "# Page")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         assert all(p.name.lower() != "readme.md" for p in found)
 
     def test_index_included_in_results(self, tmp_path):
         write(tmp_path / "alpha.md", "# Alpha")
         write(tmp_path / "index.md", "# Home")
         write(tmp_path / "zebra.md", "# Zebra")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         stems = [p.stem.lower() for p in found]
         assert "index" in stems
 
     def test_accepts_markdown_extension(self, tmp_path):
         write(tmp_path / "page.markdown", "# Page")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         assert any(p.suffix == ".markdown" for p in found)
 
     def test_ignores_non_markdown_files(self, tmp_path):
         write(tmp_path / "data.json", '{"key": "value"}')
         write(tmp_path / "page.md", "# Page")
-        found = ssg.find_markdown_files(tmp_path)
+        found = hanma.find_markdown_files(tmp_path)
         assert all(p.suffix in {".md", ".markdown"} for p in found)
 
 
@@ -194,27 +194,27 @@ class TestConvertMdToHtml:
     def test_produces_html_file(self, tmp_path):
         src = write(tmp_path / "page.md", "# Hello\n\nWorld.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "Test Site", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "Test Site", nav_pages=[])
         assert out.exists()
 
     def test_output_contains_title(self, tmp_path):
         src = write(tmp_path / "page.md", "# My Page\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "Test Site", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "Test Site", nav_pages=[])
         html = out.read_text()
         assert "My Page" in html
 
     def test_output_contains_site_name(self, tmp_path):
         src = write(tmp_path / "page.md", "# Page\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "MySite", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "MySite", nav_pages=[])
         html = out.read_text()
         assert "MySite" in html
 
     def test_markdown_rendered_to_html_tags(self, tmp_path):
         src = write(tmp_path / "page.md", "# Title\n\n**bold** and *italic*.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "<strong>" in html
         assert "<em>" in html
@@ -222,7 +222,7 @@ class TestConvertMdToHtml:
     def test_fenced_code_block_highlighted(self, tmp_path):
         src = write(tmp_path / "code.md", "# Code\n\n```python\nprint('hi')\n```\n")
         out = tmp_path / "code.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "<code" in html.lower()
 
@@ -238,20 +238,20 @@ class TestConvertMdToHtml:
             """,
         )
         out = tmp_path / "table.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "<table" in html
 
     def test_creates_parent_directories(self, tmp_path):
         src = write(tmp_path / "src" / "sub" / "page.md", "# Deep\n\nContent.")
         out = tmp_path / "dist" / "sub" / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         assert out.exists()
 
     def test_self_contained_no_external_links(self, tmp_path):
         src = write(tmp_path / "page.md", "# Page\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         # Should not reference CDN or external resources
         for external in ["cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com"]:
@@ -453,50 +453,50 @@ class TestEdgeCases:
 
 class TestParseFrontMatter:
     def test_no_front_matter_returns_empty_dict(self):
-        meta, body = ssg.parse_front_matter("# Hello\n\nContent.")
+        meta, body = hanma.parse_front_matter("# Hello\n\nContent.")
         assert meta == {}
         assert "Hello" in body
 
     def test_front_matter_stripped_from_body(self):
         md = "---\ntitle: My Title\n---\n# Hello\n\nContent."
-        meta, body = ssg.parse_front_matter(md)
+        meta, body = hanma.parse_front_matter(md)
         assert "title:" not in body
         assert "---" not in body
 
     def test_title_field_parsed(self):
         md = "---\ntitle: My Title\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md)
+        meta, _ = hanma.parse_front_matter(md)
         assert meta["title"] == "My Title"
 
     def test_author_field_parsed(self):
         md = "---\nauthor: Jane Doe\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md)
+        meta, _ = hanma.parse_front_matter(md)
         assert meta["author"] == "Jane Doe"
 
     def test_date_field_parsed(self):
         md = "---\ndate: 2025-06-01\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md)
+        meta, _ = hanma.parse_front_matter(md)
         assert meta["date"] is not None
 
     def test_tags_field_parsed_as_list(self):
         md = "---\ntags:\n  - python\n  - web\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md)
+        meta, _ = hanma.parse_front_matter(md)
         assert isinstance(meta["tags"], list)
         assert "python" in meta["tags"]
 
     def test_draft_field_parsed(self):
         md = "---\ndraft: true\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md)
+        meta, _ = hanma.parse_front_matter(md)
         assert meta["draft"] is True
 
     def test_malformed_yaml_returns_empty_dict(self):
         md = "---\n: bad: yaml: {\n---\nContent."
-        meta, body = ssg.parse_front_matter(md)
+        meta, body = hanma.parse_front_matter(md)
         assert meta == {}
 
     def test_unclosed_front_matter_ignored(self):
         md = "---\ntitle: Oops\nContent with no closing delimiter."
-        meta, body = ssg.parse_front_matter(md)
+        meta, body = hanma.parse_front_matter(md)
         assert meta == {}
         assert body == md
 
@@ -511,7 +511,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\ntitle: FM Title\n---\n# H1 Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "FM Title" in html
 
@@ -519,7 +519,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\ndescription: Custom desc.\n---\n# Title\n\nOther text.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "Custom desc." in html
 
@@ -527,7 +527,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\nauthor: Jane Doe\n---\n# Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "Jane Doe" in html
 
@@ -535,7 +535,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\ndate: 2025-06-01\n---\n# Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "2025" in html
 
@@ -543,7 +543,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\ntags:\n  - python\n  - web\n---\n# Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert "python" in html
         assert "web" in html
@@ -552,7 +552,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\ntags:\n  - python\n---\n# Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert 'name="keywords"' in html
 
@@ -560,7 +560,7 @@ class TestFrontMatterIntegration:
         src = write(tmp_path / "page.md",
                     "---\nauthor: Jane\n---\n# Title\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html = out.read_text()
         assert 'name="author"' in html
 
@@ -575,7 +575,7 @@ class TestFrontMatterIntegration:
     def test_no_front_matter_still_works(self, tmp_path):
         src = write(tmp_path / "plain.md", "# Plain\n\nNo front matter.")
         out = tmp_path / "plain.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         assert out.exists()
         html = out.read_text()
         assert "Plain" in html
@@ -588,7 +588,7 @@ class TestFrontMatterIntegration:
 
 class TestThemes:
     def test_default_theme_loads(self):
-        template, theme_dir = ssg.load_theme("default")
+        template, theme_dir = hanma.load_theme("default")
         import string
         assert isinstance(template, string.Template)
         assert "$title" in template.template
@@ -615,19 +615,19 @@ class TestThemes:
         theme_dir = tmp_path / "themes" / "custom"
         theme_dir.mkdir(parents=True)
         # Write a minimal template with all required placeholders
-        default_template = (ssg._THEMES_DIR / "default" / "template.html").read_text()
+        default_template = (hanma._THEMES_DIR / "default" / "template.html").read_text()
         (theme_dir / "template.html").write_text(default_template)
         (theme_dir / "custom.css").write_text("body { color: red; }")
 
         out_dir = tmp_path / "dist"
         out_dir.mkdir()
 
-        original_themes_dir = ssg._THEMES_DIR
-        ssg._THEMES_DIR = tmp_path / "themes"
+        original_themes_dir = hanma._THEMES_DIR
+        hanma._THEMES_DIR = tmp_path / "themes"
         try:
-            ssg.copy_theme_assets(theme_dir, out_dir)
+            hanma.copy_theme_assets(theme_dir, out_dir)
         finally:
-            ssg._THEMES_DIR = original_themes_dir
+            hanma._THEMES_DIR = original_themes_dir
 
         assert (out_dir / "custom.css").exists()
         assert not (out_dir / "template.html").exists()
@@ -635,8 +635,8 @@ class TestThemes:
     def test_template_html_not_copied_as_asset(self, tmp_path):
         out_dir = tmp_path / "dist"
         out_dir.mkdir()
-        theme_dir = ssg._THEMES_DIR / "default"
-        ssg.copy_theme_assets(theme_dir, out_dir)
+        theme_dir = hanma._THEMES_DIR / "default"
+        hanma.copy_theme_assets(theme_dir, out_dir)
         assert not (out_dir / "template.html").exists()
 
 
@@ -650,7 +650,7 @@ class TestXSSEscaping:
         src = write(tmp_path / "page.md",
                     '---\ntitle: "</title><script>alert(1)</script>"\n---\nContent.')
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html_text = out.read_text()
         assert "<script>alert(1)</script>" not in html_text
         assert "&lt;script&gt;" in html_text
@@ -659,14 +659,14 @@ class TestXSSEscaping:
         src = write(tmp_path / "page.md",
                     '---\nauthor: "</em><script>xss</script>"\n---\n# T\n\nContent.')
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html_text = out.read_text()
         assert "<script>xss</script>" not in html_text
 
     def test_site_name_xss_escaped(self, tmp_path):
         src = write(tmp_path / "page.md", "# T\n\nContent.")
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, '<script>evil</script>', nav_pages=[])
+        hanma.convert_md_to_html(src, out, '<script>evil</script>', nav_pages=[])
         html_text = out.read_text()
         assert "<script>evil</script>" not in html_text
 
@@ -675,7 +675,7 @@ class TestXSSEscaping:
         out = tmp_path / "page.html"
         # nav_pages now takes 4-tuples: (out_html, title, md_path, layout)
         nav_pages = [(out, '<script>nav</script>', src, 'page')]
-        ssg.convert_md_to_html(src, out, "S", nav_pages=nav_pages)
+        hanma.convert_md_to_html(src, out, "S", nav_pages=nav_pages)
         html_text = out.read_text()
         assert "<script>nav</script>" not in html_text
 
@@ -683,7 +683,7 @@ class TestXSSEscaping:
         src = write(tmp_path / "page.md",
                     '---\ndescription: "<script>desc</script>"\n---\n# T\n\nContent.')
         out = tmp_path / "page.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         html_text = out.read_text()
         assert "<script>desc</script>" not in html_text
 
@@ -713,14 +713,14 @@ class TestPortHandling:
 class TestMalformedYAMLWarning:
     def test_malformed_yaml_prints_warning(self, capsys):
         md = "---\n: bad: yaml: {\n---\nContent."
-        meta, _ = ssg.parse_front_matter(md, source_path=Path("test.md"))
+        meta, _ = hanma.parse_front_matter(md, source_path=Path("test.md"))
         captured = capsys.readouterr()
         assert "warning" in captured.err.lower() or "malformed" in captured.err.lower()
 
     def test_malformed_yaml_integration_generates_html(self, tmp_path):
         src = write(tmp_path / "bad.md", "---\n: bad: yaml: {\n---\n# Title\n\nContent.")
         out = tmp_path / "bad.html"
-        ssg.convert_md_to_html(src, out, "S", nav_pages=[])
+        hanma.convert_md_to_html(src, out, "S", nav_pages=[])
         assert out.exists()
         assert "Title" in out.read_text()
 
@@ -858,8 +858,8 @@ class TestTagIndexPages:
         out_path = tmp_path / "tags" / "python.html"
         pages = [(tmp_path / "page.html", "My Page", "March 01, 2025")]
         (tmp_path / "page.html").write_text("<html></html>")
-        template, _ = ssg.load_theme("default")
-        ssg.build_tag_index_html("python", pages, out_path, "Test", [], template)
+        template, _ = hanma.load_theme("default")
+        hanma.build_tag_index_html("python", pages, out_path, "Test", [], template)
         assert out_path.exists()
         html_text = out_path.read_text()
         assert "python" in html_text
@@ -902,39 +902,39 @@ class TestSitemap:
         assert "urlset" in root_elem.tag
 
     def test_build_sitemap_xml_function_no_base_url(self, tmp_path):
-        result = ssg.build_sitemap_xml([], tmp_path, "")
+        result = hanma.build_sitemap_xml([], tmp_path, "")
         assert result is None
         assert not (tmp_path / "sitemap.xml").exists()
 
 
 # ===========================================================================
-# 23. Site config file (ssg.yaml)
+# 23. Site config file (hanma.yaml)
 # ===========================================================================
 
 
 class TestSiteConfig:
     def test_load_site_config_reads_name(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("name: My Config Site\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("name: My Config Site\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("name") == "My Config Site"
 
     def test_load_site_config_returns_empty_when_missing(self, tmp_path):
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        config = hanma.load_site_config(tmp_path / "hanma.yaml")
         assert config == {}
 
     def test_load_site_config_reads_base_url(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("base_url: https://example.com\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("base_url: https://example.com\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("base_url") == "https://example.com"
 
     def test_load_site_config_reads_theme(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("theme: default\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("theme: default\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("theme") == "default"
 
     def test_site_config_name_used_in_output(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
-        cfg = tmp_path / "ssg.yaml"
+        cfg = tmp_path / "hanma.yaml"
         cfg.write_text("name: ConfigSiteName\n")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
@@ -943,7 +943,7 @@ class TestSiteConfig:
 
     def test_cli_name_overrides_config(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
-        (tmp_path / "ssg.yaml").write_text("name: ConfigName\n")
+        (tmp_path / "hanma.yaml").write_text("name: ConfigName\n")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--name", "CLIName")
         page_html = (out_dir / "page.html").read_text()
@@ -951,8 +951,8 @@ class TestSiteConfig:
         assert "ConfigName" not in page_html
 
     def test_malformed_config_returns_empty(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text(": bad: yaml: {\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text(": bad: yaml: {\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yaml")
         assert config == {}
 
     def test_custom_config_path_flag(self, tmp_path):
@@ -965,33 +965,33 @@ class TestSiteConfig:
         assert "CustomPathSite" in page_html
 
     def test_load_site_config_reads_serve(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("serve: true\nport: 9000\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("serve: true\nport: 9000\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yml")
         assert config.get("serve") is True
         assert config.get("port") == 9000
 
     def test_load_site_config_reads_watch(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("watch: true\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("watch: true\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yml")
         assert config.get("watch") is True
 
     def test_load_site_config_reads_incremental(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("incremental: true\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("incremental: true\n")
+        config = hanma.load_site_config(tmp_path / "hanma.yml")
         assert config.get("incremental") is True
 
-    def test_load_site_config_prefers_ssg_yml_over_ssg_yaml(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("name: FromYml\n")
-        (tmp_path / "ssg.yaml").write_text("name: FromYaml\n")
+    def test_load_site_config_prefers_hanma_yml_over_hanma_yaml(self, tmp_path):
+        (tmp_path / "hanma.yml").write_text("name: FromYml\n")
+        (tmp_path / "hanma.yaml").write_text("name: FromYaml\n")
         # load_site_config takes an explicit path; the lookup preference is in main()
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        config = hanma.load_site_config(tmp_path / "hanma.yml")
         assert config.get("name") == "FromYml"
 
-    def test_default_conf_dir_ssg_yml_loaded(self):
-        """conf/ssg.yml next to ssg.py is loaded without any --config flag."""
-        conf_yml = SSG.parent / "conf" / "ssg.yml"
-        assert conf_yml.is_file(), "conf/ssg.yml must exist"
-        config = ssg.load_site_config(conf_yml)
+    def test_default_conf_dir_hanma_yml_loaded(self):
+        """conf/hanma.yml next to hanma.py is loaded without any --config flag."""
+        conf_yml = SSG.parent / "conf" / "hanma.yml"
+        assert conf_yml.is_file(), "conf/hanma.yml must exist"
+        config = hanma.load_site_config(conf_yml)
         # The shipped default must at minimum define 'name'
         assert "name" in config
 
@@ -1029,7 +1029,7 @@ class TestStaticAssets:
         dst.mkdir()
         (src / "static").mkdir(parents=True)
         (src / "static" / "style.css").write_text("body {}")
-        ssg.copy_static_assets(src, dst)
+        hanma.copy_static_assets(src, dst)
         assert (dst / "static" / "style.css").exists()
 
     def test_copy_static_assets_no_static_dir(self, tmp_path):
@@ -1037,7 +1037,7 @@ class TestStaticAssets:
         src.mkdir()
         dst = tmp_path / "dst"
         dst.mkdir()
-        ssg.copy_static_assets(src, dst)  # should not raise
+        hanma.copy_static_assets(src, dst)  # should not raise
 
 
 # ===========================================================================
@@ -1102,7 +1102,7 @@ class TestSearchIndex:
     def test_build_search_json_function(self, tmp_path):
         import json as _json
         entries = [{"title": "T", "description": "D", "url": "t.html", "tags": []}]
-        ssg.build_search_json(entries, tmp_path)
+        hanma.build_search_json(entries, tmp_path)
         result = _json.loads((tmp_path / "search.json").read_text())
         assert result[0]["title"] == "T"
 
@@ -1172,10 +1172,10 @@ class TestPostListingPage:
     def test_build_posts_listing_html_function(self, tmp_path):
         from datetime import datetime
         out_path = tmp_path / "posts.html"
-        template, _ = ssg.load_theme("default")
+        template, _ = hanma.load_theme("default")
         dt = datetime(2025, 3, 1, 14, 30)
         dated = [(tmp_path / "post.html", "My Post", dt, "A description")]
-        ssg.build_posts_listing_html(dated, out_path, "Test", [], template)
+        hanma.build_posts_listing_html(dated, out_path, "Test", [], template)
         assert out_path.exists()
         html_text = out_path.read_text()
         assert "My Post" in html_text
@@ -1199,7 +1199,7 @@ class TestIncrementalBuilds:
         write(tmp_path / "page.md", "# Page\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--incremental")
-        assert (out_dir / ".ssg_manifest.json").exists()
+        assert (out_dir / ".hanma_manifest.json").exists()
 
     def test_unchanged_page_skipped_on_second_build(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
@@ -1222,7 +1222,7 @@ class TestIncrementalBuilds:
     def test_page_needs_rebuild_missing_output(self, tmp_path):
         md = write(tmp_path / "page.md", "# Page\n\nContent.")
         out_html = tmp_path / "page.html"
-        assert ssg.page_needs_rebuild(md, out_html, {}, 0.0) is True
+        assert hanma.page_needs_rebuild(md, out_html, {}, 0.0) is True
 
     def test_page_needs_rebuild_unchanged(self, tmp_path):
         md = write(tmp_path / "page.md", "# Page\n\nContent.")
@@ -1230,7 +1230,7 @@ class TestIncrementalBuilds:
         out_html.write_text("<html></html>")
         mtime = md.stat().st_mtime
         manifest = {str(md): mtime, "_template_mtime": 0.0}
-        assert ssg.page_needs_rebuild(md, out_html, manifest, 0.0) is False
+        assert hanma.page_needs_rebuild(md, out_html, manifest, 0.0) is False
 
     def test_page_needs_rebuild_template_changed(self, tmp_path):
         md = write(tmp_path / "page.md", "# Page\n\nContent.")
@@ -1239,17 +1239,17 @@ class TestIncrementalBuilds:
         mtime = md.stat().st_mtime
         manifest = {str(md): mtime, "_template_mtime": 0.0}
         # Template mtime is newer than manifest records
-        assert ssg.page_needs_rebuild(md, out_html, manifest, mtime + 1.0) is True
+        assert hanma.page_needs_rebuild(md, out_html, manifest, mtime + 1.0) is True
 
     def test_load_save_manifest_roundtrip(self, tmp_path):
-        manifest_path = tmp_path / ".ssg_manifest.json"
+        manifest_path = tmp_path / ".hanma_manifest.json"
         data = {"/some/path.md": 1234567890.0, "_template_mtime": 9876543.0}
-        ssg.save_build_manifest(manifest_path, data)
-        loaded = ssg.load_build_manifest(manifest_path)
+        hanma.save_build_manifest(manifest_path, data)
+        loaded = hanma.load_build_manifest(manifest_path)
         assert loaded == data
 
     def test_load_manifest_missing_file(self, tmp_path):
-        result = ssg.load_build_manifest(tmp_path / ".ssg_manifest.json")
+        result = hanma.load_build_manifest(tmp_path / ".hanma_manifest.json")
         assert result == {}
 
 
@@ -1258,22 +1258,31 @@ class TestIncrementalBuilds:
 # ===========================================================================
 
 
-class TestWatchdogWatch:
-    def test_watchdog_available(self):
-        assert ssg._WATCHDOG_AVAILABLE is True
+watchdog_available = pytest.mark.skipif(
+    not hanma._WATCHDOG_AVAILABLE,
+    reason="watchdog not installed",
+)
 
-    def test_ssg_event_handler_relevance(self, tmp_path):
-        handler = ssg._SsgEventHandler(lambda: None, tmp_path, tmp_path)
+
+class TestWatchdogWatch:
+    def test_watchdog_flag_reflects_import(self):
+        """_WATCHDOG_AVAILABLE must be a bool; its value depends on the environment."""
+        assert isinstance(hanma._WATCHDOG_AVAILABLE, bool)
+
+    @watchdog_available
+    def test_hanma_event_handler_relevance(self, tmp_path):
+        handler = hanma._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
         assert handler._is_relevant("file.md") is True
         assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
         assert handler._is_relevant("file.yaml") is True
         assert handler._is_relevant("file.png") is False
         assert handler._is_relevant("file.txt") is False
 
-    def test_ssg_event_handler_ignores_open_close_events(self, tmp_path):
+    @watchdog_available
+    def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
         from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
         triggered = []
-        handler = ssg._SsgEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+        handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
         handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
         handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
         assert triggered == [], "open/close events must not trigger rebuild"
@@ -1283,7 +1292,7 @@ class TestWatchdogWatch:
 
     def test_watch_and_rebuild_signature_accepts_base_url(self, tmp_path):
         import inspect
-        sig = inspect.signature(ssg.watch_and_rebuild)
+        sig = inspect.signature(hanma.watch_and_rebuild)
         assert "base_url" in sig.parameters
 
 
@@ -1295,14 +1304,14 @@ class TestInitScaffold:
 
     def test_init_creates_scaffold_files(self, tmp_path):
         site_dir = tmp_path / "site"
-        ssg.init_scaffold(site_dir)
+        hanma.init_scaffold(site_dir)
         assert (site_dir / "index.md").is_file()
         assert (site_dir / "about.md").is_file()
         assert (site_dir / "posts" / "hello-world.md").is_file()
 
     def test_init_index_contains_expected_content(self, tmp_path):
         site_dir = tmp_path / "site"
-        ssg.init_scaffold(site_dir)
+        hanma.init_scaffold(site_dir)
         content = (site_dir / "index.md").read_text()
         assert "title: Home" in content
         assert "# Welcome" in content
@@ -1310,7 +1319,7 @@ class TestInitScaffold:
     def test_init_post_has_today_date(self, tmp_path):
         from datetime import datetime
         site_dir = tmp_path / "site"
-        ssg.init_scaffold(site_dir)
+        hanma.init_scaffold(site_dir)
         content = (site_dir / "posts" / "hello-world.md").read_text()
         today = datetime.now().strftime("%Y-%m-%d")
         assert today in content
@@ -1320,7 +1329,7 @@ class TestInitScaffold:
         site_dir.mkdir()
         (site_dir / "index.md").write_text("existing")
         with pytest.raises(SystemExit):
-            ssg.init_scaffold(site_dir, force=False)
+            hanma.init_scaffold(site_dir, force=False)
         # existing file must survive untouched
         assert (site_dir / "index.md").read_text() == "existing"
 
@@ -1329,7 +1338,7 @@ class TestInitScaffold:
         site_dir.mkdir()
         (site_dir / "unrelated.txt").write_text("keep me")
         with pytest.raises(SystemExit):
-            ssg.init_scaffold(site_dir, force=False)
+            hanma.init_scaffold(site_dir, force=False)
         assert (site_dir / "unrelated.txt").exists()
 
     def test_init_force_wipes_dir_and_creates_scaffold(self, tmp_path):
@@ -1337,7 +1346,7 @@ class TestInitScaffold:
         site_dir.mkdir()
         extra = site_dir / "extra.md"
         extra.write_text("should be gone")
-        ssg.init_scaffold(site_dir, force=True)
+        hanma.init_scaffold(site_dir, force=True)
         # extra file wiped
         assert not extra.exists()
         # scaffold files present
@@ -1365,3 +1374,40 @@ class TestInitScaffold:
         run("--init", "--force", cwd=tmp_path)
         assert not extra.exists()
         assert "# Welcome" in (site_dir / "index.md").read_text()
+
+
+# ===========================================================================
+# 29. _search_json_url depth logic
+# ===========================================================================
+
+
+class TestSearchJsonUrl:
+    def test_root_page_returns_search_json(self, tmp_path):
+        out_path = tmp_path / "index.html"
+        url = hanma._search_json_url(out_path, tmp_path, "")
+        assert url == "search.json"
+
+    def test_one_level_deep_returns_relative(self, tmp_path):
+        out_path = tmp_path / "posts" / "hello.html"
+        url = hanma._search_json_url(out_path, tmp_path, "")
+        assert url == "../search.json"
+
+    def test_two_levels_deep_returns_relative(self, tmp_path):
+        out_path = tmp_path / "a" / "b" / "page.html"
+        url = hanma._search_json_url(out_path, tmp_path, "")
+        assert url == "../../search.json"
+
+    def test_base_url_returns_absolute(self, tmp_path):
+        out_path = tmp_path / "posts" / "hello.html"
+        url = hanma._search_json_url(out_path, tmp_path, "https://example.com")
+        assert url == "https://example.com/search.json"
+
+    def test_base_url_trailing_slash_stripped(self, tmp_path):
+        out_path = tmp_path / "index.html"
+        url = hanma._search_json_url(out_path, tmp_path, "https://example.com/")
+        assert url == "https://example.com/search.json"
+
+    def test_no_output_root_returns_bare(self, tmp_path):
+        out_path = tmp_path / "page.html"
+        url = hanma._search_json_url(out_path, None, "")
+        assert url == "search.json"

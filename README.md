@@ -1,8 +1,13 @@
-# ssg.py
+<p align="center">
+  <img src="assets/hanma_logo_universal_dark.svg" alt="hanma.py logo" width="400" />
+</p>
 
-A minimal static site generator written in Python. Drop it into any directory,
-run it, and every Markdown file is converted to a self-contained HTML page —
-no configuration file required.
+A static site generator that does what it needs to and stops there. No roadmap,
+no grand ambitions. The name is the honest answer to "when will it be finished?"
+
+It builds your blog. That's mostly it.
+
+> *はんま (hanma)* — something half-done, incomplete, not quite a whole unit.
 
 ## Features
 
@@ -22,7 +27,7 @@ no configuration file required.
 - Stale output cleanup — HTML files with no corresponding source are removed automatically on every generation and in `--watch` mode when source files are deleted
 - YAML front matter — optional `---` block at the top of any `.md` file for per-page metadata
 - Theme system — swap the entire HTML/CSS/JS layout with `--theme NAME`; themes are self-contained directories
-- Site config file (`ssg.yml`) — project-level defaults for name, output, theme, base URL, and more
+- Site config file (`hanma.yml`) — project-level defaults for name, output, theme, base URL, and more
 - Tag index pages — `tags/<slug>.html` generated automatically from front matter tags
 - Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by file modification time (newest first), accessible at `/posts/`
 - Client-side search — `search.json` generated and searchable inline via the default theme's header search box
@@ -57,22 +62,22 @@ deactivate
 ```
 
 The virtual environment directory (`.venv`) is automatically skipped by
-`ssg.py` during Markdown discovery.
+`hanma.py` during Markdown discovery.
 
 ## Setup
 
 Make the script executable so you can run it directly without typing `python`:
 
 ```bash
-chmod +x ssg.py
+chmod +x hanma.py
 ```
 
 The script already contains the appropriate shebang line (`#!/usr/bin/env python3`),
 so after `chmod +x` you can invoke it as:
 
 ```bash
-./ssg.py
-./ssg.py --name "My Blog" --serve
+./hanma.py
+./hanma.py --name "My Blog" --serve
 ```
 
 ## Project layout
@@ -81,9 +86,9 @@ The recommended structure places all Markdown content under `site/`:
 
 ```
 project/
-├── ssg.py
+├── hanma.py
 ├── conf/
-│   └── ssg.yml         ← site config (optional)
+│   └── hanma.yml         ← site config (optional)
 └── site/
     ├── index.md        ← homepage (labelled "Home" in navigation)
     ├── about.md
@@ -93,7 +98,7 @@ project/
         └── hello.md
 ```
 
-Running `./ssg.py` from the project root will automatically discover and
+Running `./hanma.py` from the project root will automatically discover and
 process everything under `site/`, including sub-directories.
 
 ### Separate output directory
@@ -103,7 +108,7 @@ source files untouched. The source tree is mirrored exactly:
 
 ```
 project/
-├── ssg.py
+├── hanma.py
 ├── site/
 │   ├── index.md
 │   ├── about.md
@@ -120,59 +125,59 @@ project/
 
 ```bash
 # Convert ./site/ (default)
-./ssg.py
+./hanma.py
 
 # Write output to a separate directory
-./ssg.py --output dist/
+./hanma.py --output dist/
 
 # Generate and serve locally (recommended for development)
-./ssg.py --name "My Blog" --serve
+./hanma.py --name "My Blog" --serve
 
 # Generate into dist/ and serve from there
-./ssg.py --output dist/ --name "My Blog" --serve
+./hanma.py --output dist/ --name "My Blog" --serve
 
 # Serve on a custom port (two equivalent forms)
-./ssg.py --serve 9000
-./ssg.py --serve --port 9000
+./hanma.py --serve 9000
+./hanma.py --serve --port 9000
 
 # Convert a single file
-./ssg.py site/post.md
+./hanma.py site/post.md
 
 # Target a specific directory explicitly
-./ssg.py ~/my-blog
+./hanma.py ~/my-blog
 
 # Use a custom theme
-./ssg.py site/ --output output/ --theme mytheme
+./hanma.py site/ --output output/ --theme mytheme
 
 # Watch for changes and regenerate automatically
-./ssg.py site/ --output output/ --watch
+./hanma.py site/ --output output/ --watch
 
 # Watch and serve simultaneously
-./ssg.py site/ --output output/ --watch --serve
+./hanma.py site/ --output output/ --watch --serve
 
 # Only rebuild pages that changed since last build
-./ssg.py --incremental
+./hanma.py --incremental
 
 # Generate sitemap.xml and absolute URLs in search.json
-./ssg.py --base-url https://example.com
+./hanma.py --base-url https://example.com
 
 # Use a config file explicitly
-./ssg.py --config path/to/ssg.yml
+./hanma.py --config path/to/hanma.yml
 
 # Preview what would be converted without writing anything
-./ssg.py --dry-run
+./hanma.py --dry-run
 
 # Scaffold a new site with sample content in ./site/
-./ssg.py --init
+./hanma.py --init
 
 # Scaffold into ./site/ even if it already contains files (wipes it first)
-./ssg.py --init --force
+./hanma.py --init --force
 
 # List available themes
-./ssg.py --list-themes
+./hanma.py --list-themes
 
 # Show version
-./ssg.py --version
+./hanma.py --version
 ```
 
 > **Note:** The `--serve` flag is recommended for local development. Browsers
@@ -189,7 +194,7 @@ project/
 | `--name NAME` | `Blog` | Site name displayed in the page header |
 | `--output DIR` | `./output/` | Directory to write generated HTML files |
 | `--base-url URL` | — | Absolute base URL; enables `sitemap.xml` and absolute URLs in `search.json` |
-| `--config FILE` | `conf/ssg.yml` | Path to a config file; overrides default lookup order |
+| `--config FILE` | `conf/hanma.yml` | Path to a config file; overrides default lookup order |
 | `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--dry-run` | — | List matched files without writing HTML |
 | `--incremental` | — | Only rebuild pages whose source has changed since the last build |
@@ -203,7 +208,7 @@ project/
 
 ## Site Config File
 
-A `conf/ssg.yml` file (next to `ssg.py`) sets project-level defaults. CLI flags always override config file values.
+A `conf/hanma.yml` file (next to `hanma.py`) sets project-level defaults. CLI flags always override config file values.
 
 ```yaml
 name: My Site           # site name shown in header
@@ -219,9 +224,9 @@ posts_label: Blog       # label for the posts listing link in the nav (default: 
 
 Config file lookup order (first found wins):
 1. `--config FILE` flag
-2. `conf/ssg.yml` (next to `ssg.py`) — the shipped default
-3. `ssg.yml` at the root of the source directory
-4. `ssg.yaml` at the root of the source directory (legacy fallback)
+2. `conf/hanma.yml` (next to `hanma.py`) — the shipped default
+3. `hanma.yml` at the root of the source directory
+4. `hanma.yaml` at the root of the source directory (legacy fallback)
 
 ## Homepage
 
@@ -316,7 +321,7 @@ results, always declare the language after the opening fence.
 ## Themes
 
 The visual layout is controlled by a theme. Themes live in `themes/<name>/`
-alongside `ssg.py` and are fully self-contained directories:
+alongside `hanma.py` and are fully self-contained directories:
 
 ```
 themes/
@@ -330,13 +335,13 @@ to the output root automatically at generation time.
 Select a theme with `--theme`:
 
 ```bash
-./ssg.py site/ --output output/ --theme mytheme
+./hanma.py site/ --output output/ --theme mytheme
 ```
 
 List available themes:
 
 ```bash
-./ssg.py --list-themes
+./hanma.py --list-themes
 ```
 
 ### Creating a custom theme
@@ -367,7 +372,7 @@ Available variables in `template.html`:
 
 ## Testing
 
-A pytest suite lives in `tests/test_ssg.py` and covers syntax checking, file
+A pytest suite lives in `tests/test_hanma.py` and covers syntax checking, file
 discovery, conversion, CLI flags, navigation, and edge cases.
 
 ```bash
