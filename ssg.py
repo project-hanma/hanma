@@ -3,7 +3,7 @@
 ssg.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.4.5
+Version: 0.4.6
 
 Usage:
     python ssg.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 
 import html
 import json
@@ -1157,6 +1157,77 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# INIT SCAFFOLD
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SCAFFOLD_FILES: dict[str, str] = {
+    "index.md": """\
+---
+title: Home
+description: Welcome to my site.
+---
+
+# Welcome
+
+This is the home page of your new site, built with **ssg.py**.
+
+Edit the Markdown files in `site/` and run `./ssg.py` to regenerate.
+""",
+    "about.md": """\
+---
+title: About
+description: A little about this site.
+---
+
+# About
+
+Tell readers who you are and what this site is about.
+""",
+    "posts/hello-world.md": """\
+---
+title: Hello, World
+description: My first post.
+date: {today}
+tags:
+  - general
+---
+
+# Hello, World
+
+Welcome to your first post!  Add more files to `site/posts/` and they will
+appear in the auto-generated **Posts** listing.
+""",
+}
+
+
+def init_scaffold(site_dir: Path, force: bool = False) -> None:
+    """Create sample content in site_dir.
+
+    Aborts (with a helpful message) if site_dir is non-empty and force is
+    False.  With force=True, the entire site_dir is wiped before writing.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # Check whether the directory has any contents at all
+    if site_dir.is_dir() and any(site_dir.iterdir()):
+        if not force:
+            print(f"Error: '{site_dir}' is not empty.")
+            print("Re-run with --force to wipe it and create fresh sample content.")
+            sys.exit(1)
+        shutil.rmtree(site_dir)
+
+    site_dir.mkdir(parents=True, exist_ok=True)
+
+    for rel, content in _SCAFFOLD_FILES.items():
+        dest = site_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content.format(today=today), encoding="utf-8")
+        print(f"  [create] {rel}")
+
+    print(f"\nScaffold written to '{site_dir}'.  Run ./ssg.py to build.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1254,6 +1325,16 @@ Examples:
         metavar="FILE",
         help="Path to config file (default: conf/ssg.yml next to ssg.py, then ssg.yml in source directory)",
     )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Scaffold a new site with sample content in ./site/ and exit",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --init: overwrite existing files in the target directory",
+    )
     args = parser.parse_args()
 
     if args.list_themes:
@@ -1267,6 +1348,11 @@ Examples:
                 print("No themes found in themes/")
         else:
             print("No themes/ directory found")
+        return
+
+    if args.init:
+        site_dir = Path("site").resolve()
+        init_scaffold(site_dir, force=args.force)
         return
 
     # ── Resolve default path: prefer ./site/, fall back to cwd ──────────────

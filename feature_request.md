@@ -68,8 +68,8 @@ Inject "5 min read" into the template via a new template variable.
 **Shortcodes**
 Custom inline macros like `{{youtube id="abc123"}}`.
 
-**`--init` Scaffold**
-Scaffold a new site with sample content and a `site/` directory.
+~~**`--init` Scaffold**~~
+~~Scaffold a new site with sample content and a `site/` directory.~~
 
 ---
 
