@@ -1,8 +1,15 @@
 # ssg.py
 
-A minimal static site generator written in Python. Drop it into any directory,
-run it, and every Markdown file is converted to a self-contained HTML page —
-no configuration file required.
+<p align="center">
+  <img src="assets/hanma_logo.svg" alt="ssg.py logo" />
+</p>
+
+A static site generator that does what it needs to and stops there. No roadmap,
+no grand ambitions. The name is the honest answer to "when will it be finished?"
+
+It builds your blog. That's mostly it.
+
+> *はんま (hanma)* — something half-done, incomplete, not quite a whole unit.
 
 ## Features
 
