@@ -132,6 +132,7 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
       tags        list  — rendered as a tag strip below the content
       draft       bool  — if true, the page is skipped during generation
       refresh     int   — auto-refresh interval in seconds (omit or 0 to disable)
+      layout      str   — 'page' (default) or 'post'; overrides directory-based default
     """
     lines = md_text.split("\n")
     if not lines or lines[0].strip() != "---":
@@ -250,7 +251,7 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
     return ""
 
 
-def build_nav_html(current_out_html: Path, toc_inner: str,
+def build_nav_html(current_out_html: Path,
                    nav_pages: list[tuple],
                    output_root: Optional[Path] = None,
                    posts_out: Optional[Path] = None,
@@ -447,8 +448,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                        posts_label: str = "Blog") -> Path:
     """Read a .md file and write the HTML output to out_path.
 
-    nav_pages is a list of (out_html_path, title) tuples for every page being
-    generated, used to build the cross-page navigation bar.
+    nav_pages is a list of (out_html_path, title, md_path, layout) tuples for
+    every page being generated, used to build the cross-page navigation bar.
     template is a string.Template loaded from the active theme; defaults to
     the built-in default theme when not supplied.
     tags_out_dir is the output directory for tag index pages; when provided,
@@ -546,15 +547,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                 tag_items_html.append(f'<span class="tag">{tag_text}</span>')
         content_html += f'\n<div class="page-tags">{"".join(tag_items_html)}</div>'
 
-    # Extract TOC inner HTML (strip the outer <div class="toc"> wrapper)
-    toc_html = getattr(md, "toc", "")
-    empty_toc = ('<div class="toc">\n<ul>\n</ul>\n</div>', "")
-    if toc_html.strip() in empty_toc:
-        toc_inner = ""
-    else:
-        toc_inner = re.sub(r'</?div[^>]*>', '', toc_html).strip()
-
-    nav_html = build_nav_html(out_path, toc_inner, nav_pages or [],
+    nav_html = build_nav_html(out_path, nav_pages or [],
                               output_root=output_root,
                               posts_out=posts_out, posts_label=posts_label)
 
@@ -692,7 +685,7 @@ def _make_generated_page(content_html: str, title: str, description: str,
                           posts_out: Optional[Path] = None,
                           posts_label: str = "Blog") -> Path:
     """Render a generated (non-markdown) page using the active theme template."""
-    nav_html = build_nav_html(out_path, "", nav_pages, output_root=output_root,
+    nav_html = build_nav_html(out_path, nav_pages, output_root=output_root,
                               posts_out=posts_out, posts_label=posts_label)
     now = datetime.now()
     titles_match = site_name and title.lower() == site_name.lower()
@@ -1170,18 +1163,19 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         return ok, errors, skipped
 
     # ── Generate tag index pages ──────────────────────────────────────────
+    def _tag_sort_key(entry):
+        """Sort tag listing: dated entries first (by date desc), then undated."""
+        _, _, date_str = entry
+        if date_str:
+            try:
+                return (0, datetime.strptime(date_str, "%B %d, %Y"))
+            except ValueError:
+                pass
+        return (1, datetime.min)
+
     for tag, tag_pages in tags_map.items():
         tag_out = tag_out_paths[tag]
-        # Sort tag pages: dated entries first (by date desc), then undated alphabetically
-        def _sort_key(entry):
-            _, _, date_str = entry
-            if date_str:
-                try:
-                    return (0, datetime.strptime(date_str, "%B %d, %Y"))
-                except ValueError:
-                    pass
-            return (1, datetime.min)
-        tag_pages_sorted = sorted(tag_pages, key=_sort_key, reverse=True)
+        tag_pages_sorted = sorted(tag_pages, key=_tag_sort_key, reverse=True)
         try:
             build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
                              base_url=base_url, output_root=output_dir,
@@ -1660,7 +1654,7 @@ Examples:
         print(f"  ✓  {target.name}  →  {out_html}")
         print(f"\nDone.  1 converted, 0 errors.")
         if effective_serve:
-            _serve(output_dir, effective_port, [(out_html, "Page")])
+            _serve(output_dir, effective_port)
         return
 
     # ── Load theme ────────────────────────────────────────────────────────
@@ -1671,21 +1665,6 @@ Examples:
 
     # ── Run the build ─────────────────────────────────────────────────────
     print(f"Building '{site_name}'  →  {output_dir}\n")
-    # Collect all_files for post-build serve logic
-    _files = find_markdown_files(root)
-    # Build a quick list for serve URL resolution
-    _all_files_preview: list[tuple] = []
-    for md_path in _files:
-        title, _, front = collect_page_info(md_path)
-        if front.get("draft") is True:
-            continue
-        if md_path.stem.lower() == "index":
-            title = "Home"
-        rel = md_path.relative_to(root)
-        out_html = output_dir / rel.with_suffix(".html")
-        _all_files_preview.append((md_path, out_html, title))
-    _all_files_preview.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
-
     ok, errors, skipped = _run_build(
         root, output_dir, site_name, theme_template, theme_dir,
         base_url=base_url,
@@ -1717,24 +1696,26 @@ Examples:
 
     if effective_serve:
         print("\nStarting server…")
-        _serve(output_dir, effective_port, _all_files_preview)
+        _serve(output_dir, effective_port)
 
 
-def _serve(serve_dir: Path, port: int, all_files: list) -> None:
+def _serve(serve_dir: Path, port: int) -> None:
     """Start a local HTTP server serving serve_dir."""
 
     index_html = serve_dir / "index.html"
     if index_html.is_file():
         open_url = f"http://localhost:{port}/index.html"
-    elif all_files:
-        first_html = all_files[0][1]
-        try:
-            rel_html = first_html.relative_to(serve_dir)
-        except ValueError:
-            rel_html = first_html
-        open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
     else:
-        open_url = f"http://localhost:{port}/"
+        # Fall back to the first HTML file found, or bare root
+        html_files = sorted(serve_dir.rglob("*.html"))
+        if html_files:
+            try:
+                rel_html = html_files[0].relative_to(serve_dir)
+            except ValueError:
+                rel_html = html_files[0]
+            open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
+        else:
+            open_url = f"http://localhost:{port}/"
 
     class QuietHandler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
