@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-ssg.py — Static Site Generator
+hanma.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
 Version: 0.5.0
 
 Usage:
-    python ssg.py [directory]
+    python hanma.py [directory]
 
 If no directory is given, ./site/ is used (falling back to the current directory).
 All .md files found in the directory tree are converted to .html
@@ -132,6 +132,7 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
       tags        list  — rendered as a tag strip below the content
       draft       bool  — if true, the page is skipped during generation
       refresh     int   — auto-refresh interval in seconds (omit or 0 to disable)
+      layout      str   — 'page' (default) or 'post'; overrides directory-based default
     """
     lines = md_text.split("\n")
     if not lines or lines[0].strip() != "---":
@@ -155,11 +156,11 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SITE CONFIG FILE (ssg.yml)
+# SITE CONFIG FILE (hanma.yml)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_site_config(config_path: Path) -> dict:
-    """Load ssg.yml (or ssg.yaml) from config_path. Returns {} if absent or invalid.
+    """Load hanma.yml (or hanma.yaml) from config_path. Returns {} if absent or invalid.
 
     Recognized fields: name, base_url, output, theme, serve, port, watch, incremental.
     """
@@ -250,7 +251,7 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
     return ""
 
 
-def build_nav_html(current_out_html: Path, toc_inner: str,
+def build_nav_html(current_out_html: Path,
                    nav_pages: list[tuple],
                    output_root: Optional[Path] = None,
                    posts_out: Optional[Path] = None,
@@ -447,8 +448,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                        posts_label: str = "Blog") -> Path:
     """Read a .md file and write the HTML output to out_path.
 
-    nav_pages is a list of (out_html_path, title) tuples for every page being
-    generated, used to build the cross-page navigation bar.
+    nav_pages is a list of (out_html_path, title, md_path, layout) tuples for
+    every page being generated, used to build the cross-page navigation bar.
     template is a string.Template loaded from the active theme; defaults to
     the built-in default theme when not supplied.
     tags_out_dir is the output directory for tag index pages; when provided,
@@ -546,15 +547,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                 tag_items_html.append(f'<span class="tag">{tag_text}</span>')
         content_html += f'\n<div class="page-tags">{"".join(tag_items_html)}</div>'
 
-    # Extract TOC inner HTML (strip the outer <div class="toc"> wrapper)
-    toc_html = getattr(md, "toc", "")
-    empty_toc = ('<div class="toc">\n<ul>\n</ul>\n</div>', "")
-    if toc_html.strip() in empty_toc:
-        toc_inner = ""
-    else:
-        toc_inner = re.sub(r'</?div[^>]*>', '', toc_html).strip()
-
-    nav_html = build_nav_html(out_path, toc_inner, nav_pages or [],
+    nav_html = build_nav_html(out_path, nav_pages or [],
                               output_root=output_root,
                               posts_out=posts_out, posts_label=posts_label)
 
@@ -692,7 +685,7 @@ def _make_generated_page(content_html: str, title: str, description: str,
                           posts_out: Optional[Path] = None,
                           posts_label: str = "Blog") -> Path:
     """Render a generated (non-markdown) page using the active theme template."""
-    nav_html = build_nav_html(out_path, "", nav_pages, output_root=output_root,
+    nav_html = build_nav_html(out_path, nav_pages, output_root=output_root,
                               posts_out=posts_out, posts_label=posts_label)
     now = datetime.now()
     titles_match = site_name and title.lower() == site_name.lower()
@@ -1170,18 +1163,19 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         return ok, errors, skipped
 
     # ── Generate tag index pages ──────────────────────────────────────────
+    def _tag_sort_key(entry):
+        """Sort tag listing: dated entries first (by date desc), then undated."""
+        _, _, date_str = entry
+        if date_str:
+            try:
+                return (0, datetime.strptime(date_str, "%B %d, %Y"))
+            except ValueError:
+                pass
+        return (1, datetime.min)
+
     for tag, tag_pages in tags_map.items():
         tag_out = tag_out_paths[tag]
-        # Sort tag pages: dated entries first (by date desc), then undated alphabetically
-        def _sort_key(entry):
-            _, _, date_str = entry
-            if date_str:
-                try:
-                    return (0, datetime.strptime(date_str, "%B %d, %Y"))
-                except ValueError:
-                    pass
-            return (1, datetime.min)
-        tag_pages_sorted = sorted(tag_pages, key=_sort_key, reverse=True)
+        tag_pages_sorted = sorted(tag_pages, key=_tag_sort_key, reverse=True)
         try:
             build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
                              base_url=base_url, output_root=output_dir,
@@ -1240,7 +1234,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 # WATCH MODE (watchdog-based)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class _SsgEventHandler(_WatchdogHandler):
+class _HanmaEventHandler(_WatchdogHandler):
     """Watchdog event handler: triggers a debounced rebuild on any relevant change."""
 
     _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".css", ".js"}
@@ -1344,7 +1338,7 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
         except Exception as exc:
             print(f"  [watch] build error: {exc}")
 
-    handler = _SsgEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
+    handler = _HanmaEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
     observer = Observer()
     observer.schedule(handler, str(root), recursive=True)
     if theme_dir != root and not theme_dir.is_relative_to(root):
@@ -1373,9 +1367,9 @@ description: Welcome to my site.
 
 # Welcome
 
-This is the home page of your new site, built with **ssg.py**.
+This is the home page of your new site, built with **hanma.py**.
 
-Edit the Markdown files in `site/` and run `./ssg.py` to regenerate.
+Edit the Markdown files in `site/` and run `./hanma.py` to regenerate.
 """,
     "about.md": """\
 ---
@@ -1435,7 +1429,7 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
         dest.write_text(content.format(today=today), encoding="utf-8")
         print(f"  [create] {rel}")
 
-    print(f"\nScaffold written to '{site_dir}'.  Run ./ssg.py to build.")
+    print(f"\nScaffold written to '{site_dir}'.  Run ./hanma.py to build.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1444,26 +1438,26 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
 
 def main() -> None:
     if sys.version_info < (3, 10):
-        sys.exit("Error: ssg.py requires Python 3.10 or later.")
+        sys.exit("Error: hanma.py requires Python 3.10 or later.")
 
     parser = argparse.ArgumentParser(
         description="Convert Markdown files to HTML, recursively.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./ssg.py                                      # Process ./site/ (default, in-place)
-  ./ssg.py site/sample.md                       # Convert a single file
-  ./ssg.py site/                                # Explicit site directory (in-place)
-  ./ssg.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
-  ./ssg.py --name "My Blog" --serve             # Named site with local server
-  ./ssg.py --output dist/ --serve               # Serve from output directory
-  ./ssg.py --incremental                        # Only rebuild changed pages
+  ./hanma.py                                      # Process ./site/ (default, in-place)
+  ./hanma.py site/sample.md                       # Convert a single file
+  ./hanma.py site/                                # Explicit site directory (in-place)
+  ./hanma.py site/ --output dist/                 # Write HTML to dist/, mirroring source tree
+  ./hanma.py --name "My Blog" --serve             # Named site with local server
+  ./hanma.py --output dist/ --serve               # Serve from output directory
+  ./hanma.py --incremental                        # Only rebuild changed pages
         """,
     )
     parser.add_argument(
         "--version",
         action="version",
-        version=f"ssg.py {__version__}",
+        version=f"hanma.py {__version__}",
     )
     parser.add_argument(
         "path",
@@ -1475,7 +1469,7 @@ Examples:
         "--name",
         default=None,
         metavar="SITE_NAME",
-        help='Site name shown in the header (default: from ssg.yml or "Blog")',
+        help='Site name shown in the header (default: from hanma.yml or "Blog")',
     )
     parser.add_argument(
         "--base-url",
@@ -1500,7 +1494,7 @@ Examples:
         "--output",
         default=None,
         metavar="DIR",
-        help="Directory to write generated HTML files (default: output/ relative to ssg.py, not cwd)",
+        help="Directory to write generated HTML files (default: output/ relative to hanma.py, not cwd)",
     )
     parser.add_argument(
         "--port",
@@ -1518,7 +1512,7 @@ Examples:
         "--theme",
         default=None,
         metavar="NAME",
-        help='Theme to use from the themes/ directory (default: from ssg.yml or "default")',
+        help='Theme to use from the themes/ directory (default: from hanma.yml or "default")',
     )
     parser.add_argument(
         "--list-themes",
@@ -1534,7 +1528,7 @@ Examples:
         "--config",
         default=None,
         metavar="FILE",
-        help="Path to config file (default: conf/ssg.yml next to ssg.py, then ssg.yml in source directory)",
+        help="Path to config file (default: conf/hanma.yml next to hanma.py, then hanma.yml in source directory)",
     )
     parser.add_argument(
         "--init",
@@ -1590,15 +1584,15 @@ Examples:
         print(f"Error: '{target}' is not a file or directory.")
         sys.exit(1)
 
-    # ── Load site config (ssg.yml / ssg.yaml) ─────────────────────────────
-    # Lookup order: --config flag > conf/ssg.yml (next to ssg.py) > ssg.yml in source root
-    #               > ssg.yaml in source root (legacy fallback)
+    # ── Load site config (hanma.yml / hanma.yaml) ────────────────────────────
+    # Lookup order: --config flag > conf/hanma.yml (next to hanma.py) > hanma.yml in source root
+    #               > hanma.yaml in source root (legacy fallback)
     def _find_default_config(base: Path) -> Path:
-        for name in ("ssg.yml", "ssg.yaml"):
+        for name in ("hanma.yml", "hanma.yaml"):
             p = base / name
             if p.is_file():
                 return p
-        return base / "ssg.yml"  # non-existent sentinel; load_site_config returns {}
+        return base / "hanma.yml"  # non-existent sentinel; load_site_config returns {}
 
     if args.config is not None:
         config_path = Path(args.config).resolve()
@@ -1660,32 +1654,17 @@ Examples:
         print(f"  ✓  {target.name}  →  {out_html}")
         print(f"\nDone.  1 converted, 0 errors.")
         if effective_serve:
-            _serve(output_dir, effective_port, [(out_html, "Page")])
+            _serve(output_dir, effective_port)
         return
 
     # ── Load theme ────────────────────────────────────────────────────────
     theme_template, theme_dir = load_theme(theme_name)
 
     # ── Manifest path for incremental builds ─────────────────────────────
-    manifest_path = output_dir / ".ssg_manifest.json" if effective_incremental else None
+    manifest_path = output_dir / ".hanma_manifest.json" if effective_incremental else None
 
     # ── Run the build ─────────────────────────────────────────────────────
     print(f"Building '{site_name}'  →  {output_dir}\n")
-    # Collect all_files for post-build serve logic
-    _files = find_markdown_files(root)
-    # Build a quick list for serve URL resolution
-    _all_files_preview: list[tuple] = []
-    for md_path in _files:
-        title, _, front = collect_page_info(md_path)
-        if front.get("draft") is True:
-            continue
-        if md_path.stem.lower() == "index":
-            title = "Home"
-        rel = md_path.relative_to(root)
-        out_html = output_dir / rel.with_suffix(".html")
-        _all_files_preview.append((md_path, out_html, title))
-    _all_files_preview.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
-
     ok, errors, skipped = _run_build(
         root, output_dir, site_name, theme_template, theme_dir,
         base_url=base_url,
@@ -1717,24 +1696,26 @@ Examples:
 
     if effective_serve:
         print("\nStarting server…")
-        _serve(output_dir, effective_port, _all_files_preview)
+        _serve(output_dir, effective_port)
 
 
-def _serve(serve_dir: Path, port: int, all_files: list) -> None:
+def _serve(serve_dir: Path, port: int) -> None:
     """Start a local HTTP server serving serve_dir."""
 
     index_html = serve_dir / "index.html"
     if index_html.is_file():
         open_url = f"http://localhost:{port}/index.html"
-    elif all_files:
-        first_html = all_files[0][1]
-        try:
-            rel_html = first_html.relative_to(serve_dir)
-        except ValueError:
-            rel_html = first_html
-        open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
     else:
-        open_url = f"http://localhost:{port}/"
+        # Fall back to the first HTML file found, or bare root
+        html_files = sorted(serve_dir.rglob("*.html"))
+        if html_files:
+            try:
+                rel_html = html_files[0].relative_to(serve_dir)
+            except ValueError:
+                rel_html = html_files[0]
+            open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
+        else:
+            open_url = f"http://localhost:{port}/"
 
     class QuietHandler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):

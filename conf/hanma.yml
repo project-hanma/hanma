@@ -1,4 +1,4 @@
-# ssg.yml — default site configuration
+# hanma.yml — default site configuration
 # All values here can be overridden by CLI flags.
 # Comment out any line to revert to the built-in default for that setting.
 
@@ -10,8 +10,8 @@ name: Blog
 # Example: https://example.com
 base_url: ""
 
-# Output directory for generated HTML (relative to ssg.py, or absolute).
-# Default when unset: output/ relative to ssg.py
+# Output directory for generated HTML (relative to hanma.py, or absolute).
+# Default when unset: output/ relative to hanma.py
 output: output/
 
 # Theme to use from the themes/ directory.
