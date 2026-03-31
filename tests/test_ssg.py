@@ -1262,3 +1262,83 @@ class TestWatchdogWatch:
         import inspect
         sig = inspect.signature(ssg.watch_and_rebuild)
         assert "base_url" in sig.parameters
+
+
+# ---------------------------------------------------------------------------
+# --init scaffold
+# ---------------------------------------------------------------------------
+
+class TestInitScaffold:
+
+    def test_init_creates_scaffold_files(self, tmp_path):
+        site_dir = tmp_path / "site"
+        ssg.init_scaffold(site_dir)
+        assert (site_dir / "index.md").is_file()
+        assert (site_dir / "about.md").is_file()
+        assert (site_dir / "posts" / "hello-world.md").is_file()
+
+    def test_init_index_contains_expected_content(self, tmp_path):
+        site_dir = tmp_path / "site"
+        ssg.init_scaffold(site_dir)
+        content = (site_dir / "index.md").read_text()
+        assert "title: Home" in content
+        assert "# Welcome" in content
+
+    def test_init_post_has_today_date(self, tmp_path):
+        from datetime import datetime
+        site_dir = tmp_path / "site"
+        ssg.init_scaffold(site_dir)
+        content = (site_dir / "posts" / "hello-world.md").read_text()
+        today = datetime.now().strftime("%Y-%m-%d")
+        assert today in content
+
+    def test_init_aborts_if_dir_non_empty_without_force(self, tmp_path):
+        site_dir = tmp_path / "site"
+        site_dir.mkdir()
+        (site_dir / "index.md").write_text("existing")
+        with pytest.raises(SystemExit):
+            ssg.init_scaffold(site_dir, force=False)
+        # existing file must survive untouched
+        assert (site_dir / "index.md").read_text() == "existing"
+
+    def test_init_aborts_on_any_file_not_just_scaffold_names(self, tmp_path):
+        site_dir = tmp_path / "site"
+        site_dir.mkdir()
+        (site_dir / "unrelated.txt").write_text("keep me")
+        with pytest.raises(SystemExit):
+            ssg.init_scaffold(site_dir, force=False)
+        assert (site_dir / "unrelated.txt").exists()
+
+    def test_init_force_wipes_dir_and_creates_scaffold(self, tmp_path):
+        site_dir = tmp_path / "site"
+        site_dir.mkdir()
+        extra = site_dir / "extra.md"
+        extra.write_text("should be gone")
+        ssg.init_scaffold(site_dir, force=True)
+        # extra file wiped
+        assert not extra.exists()
+        # scaffold files present
+        assert "# Welcome" in (site_dir / "index.md").read_text()
+
+    def test_init_cli_flag(self, tmp_path):
+        run("--init", cwd=tmp_path)
+        assert (tmp_path / "site" / "index.md").is_file()
+        assert (tmp_path / "site" / "about.md").is_file()
+        assert (tmp_path / "site" / "posts" / "hello-world.md").is_file()
+
+    def test_init_cli_exits_on_non_empty_dir_without_force(self, tmp_path):
+        site_dir = tmp_path / "site"
+        site_dir.mkdir()
+        (site_dir / "index.md").write_text("existing")
+        result = run("--init", cwd=tmp_path, expect_ok=False)
+        assert result.returncode != 0
+        assert (site_dir / "index.md").read_text() == "existing"
+
+    def test_init_cli_force_wipes_and_rescaffolds(self, tmp_path):
+        site_dir = tmp_path / "site"
+        site_dir.mkdir()
+        extra = site_dir / "extra.md"
+        extra.write_text("gone")
+        run("--init", "--force", cwd=tmp_path)
+        assert not extra.exists()
+        assert "# Welcome" in (site_dir / "index.md").read_text()

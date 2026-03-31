@@ -3,6 +3,8 @@
 output
 __pycache__
 .pytest_cache
-repository_audit.md
-repository_audit_claude.md
+repository_audit*
 conf/test.yml
+site/*
+!site/.gitkeep
+site_bak/
