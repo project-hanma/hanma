@@ -1,5 +1,5 @@
 """
-Tests for ssg.py — syntax, file discovery, conversion, CLI behaviour.
+Tests for hanma.py — syntax, file discovery, conversion, CLI behaviour.
 Run with: python -m pytest tests/
 """
 
@@ -16,11 +16,11 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-SSG = Path(__file__).parent.parent / "ssg.py"
+SSG = Path(__file__).parent.parent / "hanma.py"
 
 
 def run(*args, cwd=None, expect_ok=True):
-    """Run ssg.py with the given arguments and return CompletedProcess."""
+    """Run hanma.py with the given arguments and return CompletedProcess."""
     result = subprocess.run(
         [sys.executable, str(SSG), *args],
         capture_output=True,
@@ -29,7 +29,7 @@ def run(*args, cwd=None, expect_ok=True):
     )
     if expect_ok and result.returncode != 0:
         pytest.fail(
-            f"ssg.py exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"hanma.py exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     return result
 
@@ -44,7 +44,7 @@ def write(path: Path, content: str) -> Path:
 # Import the module under test so we can call functions directly
 # ---------------------------------------------------------------------------
 
-spec = importlib.util.spec_from_file_location("ssg", SSG)
+spec = importlib.util.spec_from_file_location("hanma", SSG)
 ssg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ssg)
 
@@ -908,33 +908,33 @@ class TestSitemap:
 
 
 # ===========================================================================
-# 23. Site config file (ssg.yaml)
+# 23. Site config file (hanma.yaml)
 # ===========================================================================
 
 
 class TestSiteConfig:
     def test_load_site_config_reads_name(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("name: My Config Site\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("name: My Config Site\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("name") == "My Config Site"
 
     def test_load_site_config_returns_empty_when_missing(self, tmp_path):
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        config = ssg.load_site_config(tmp_path / "hanma.yaml")
         assert config == {}
 
     def test_load_site_config_reads_base_url(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("base_url: https://example.com\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("base_url: https://example.com\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("base_url") == "https://example.com"
 
     def test_load_site_config_reads_theme(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text("theme: default\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text("theme: default\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yaml")
         assert config.get("theme") == "default"
 
     def test_site_config_name_used_in_output(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
-        cfg = tmp_path / "ssg.yaml"
+        cfg = tmp_path / "hanma.yaml"
         cfg.write_text("name: ConfigSiteName\n")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
@@ -943,7 +943,7 @@ class TestSiteConfig:
 
     def test_cli_name_overrides_config(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
-        (tmp_path / "ssg.yaml").write_text("name: ConfigName\n")
+        (tmp_path / "hanma.yaml").write_text("name: ConfigName\n")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--name", "CLIName")
         page_html = (out_dir / "page.html").read_text()
@@ -951,8 +951,8 @@ class TestSiteConfig:
         assert "ConfigName" not in page_html
 
     def test_malformed_config_returns_empty(self, tmp_path):
-        (tmp_path / "ssg.yaml").write_text(": bad: yaml: {\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yaml")
+        (tmp_path / "hanma.yaml").write_text(": bad: yaml: {\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yaml")
         assert config == {}
 
     def test_custom_config_path_flag(self, tmp_path):
@@ -965,32 +965,32 @@ class TestSiteConfig:
         assert "CustomPathSite" in page_html
 
     def test_load_site_config_reads_serve(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("serve: true\nport: 9000\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("serve: true\nport: 9000\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yml")
         assert config.get("serve") is True
         assert config.get("port") == 9000
 
     def test_load_site_config_reads_watch(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("watch: true\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("watch: true\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yml")
         assert config.get("watch") is True
 
     def test_load_site_config_reads_incremental(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("incremental: true\n")
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        (tmp_path / "hanma.yml").write_text("incremental: true\n")
+        config = ssg.load_site_config(tmp_path / "hanma.yml")
         assert config.get("incremental") is True
 
-    def test_load_site_config_prefers_ssg_yml_over_ssg_yaml(self, tmp_path):
-        (tmp_path / "ssg.yml").write_text("name: FromYml\n")
-        (tmp_path / "ssg.yaml").write_text("name: FromYaml\n")
+    def test_load_site_config_prefers_hanma_yml_over_hanma_yaml(self, tmp_path):
+        (tmp_path / "hanma.yml").write_text("name: FromYml\n")
+        (tmp_path / "hanma.yaml").write_text("name: FromYaml\n")
         # load_site_config takes an explicit path; the lookup preference is in main()
-        config = ssg.load_site_config(tmp_path / "ssg.yml")
+        config = ssg.load_site_config(tmp_path / "hanma.yml")
         assert config.get("name") == "FromYml"
 
-    def test_default_conf_dir_ssg_yml_loaded(self):
-        """conf/ssg.yml next to ssg.py is loaded without any --config flag."""
-        conf_yml = SSG.parent / "conf" / "ssg.yml"
-        assert conf_yml.is_file(), "conf/ssg.yml must exist"
+    def test_default_conf_dir_hanma_yml_loaded(self):
+        """conf/hanma.yml next to hanma.py is loaded without any --config flag."""
+        conf_yml = SSG.parent / "conf" / "hanma.yml"
+        assert conf_yml.is_file(), "conf/hanma.yml must exist"
         config = ssg.load_site_config(conf_yml)
         # The shipped default must at minimum define 'name'
         assert "name" in config
@@ -1199,7 +1199,7 @@ class TestIncrementalBuilds:
         write(tmp_path / "page.md", "# Page\n\nContent.")
         out_dir = tmp_path / "out"
         run(str(tmp_path), "--output", str(out_dir), "--incremental")
-        assert (out_dir / ".ssg_manifest.json").exists()
+        assert (out_dir / ".hanma_manifest.json").exists()
 
     def test_unchanged_page_skipped_on_second_build(self, tmp_path):
         write(tmp_path / "page.md", "# Page\n\nContent.")
@@ -1242,14 +1242,14 @@ class TestIncrementalBuilds:
         assert ssg.page_needs_rebuild(md, out_html, manifest, mtime + 1.0) is True
 
     def test_load_save_manifest_roundtrip(self, tmp_path):
-        manifest_path = tmp_path / ".ssg_manifest.json"
+        manifest_path = tmp_path / ".hanma_manifest.json"
         data = {"/some/path.md": 1234567890.0, "_template_mtime": 9876543.0}
         ssg.save_build_manifest(manifest_path, data)
         loaded = ssg.load_build_manifest(manifest_path)
         assert loaded == data
 
     def test_load_manifest_missing_file(self, tmp_path):
-        result = ssg.load_build_manifest(tmp_path / ".ssg_manifest.json")
+        result = ssg.load_build_manifest(tmp_path / ".hanma_manifest.json")
         assert result == {}
 
 
@@ -1262,18 +1262,18 @@ class TestWatchdogWatch:
     def test_watchdog_available(self):
         assert ssg._WATCHDOG_AVAILABLE is True
 
-    def test_ssg_event_handler_relevance(self, tmp_path):
-        handler = ssg._SsgEventHandler(lambda: None, tmp_path, tmp_path)
+    def test_hanma_event_handler_relevance(self, tmp_path):
+        handler = ssg._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
         assert handler._is_relevant("file.md") is True
         assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
         assert handler._is_relevant("file.yaml") is True
         assert handler._is_relevant("file.png") is False
         assert handler._is_relevant("file.txt") is False
 
-    def test_ssg_event_handler_ignores_open_close_events(self, tmp_path):
+    def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
         from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
         triggered = []
-        handler = ssg._SsgEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+        handler = ssg._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
         handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
         handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
         assert triggered == [], "open/close events must not trigger rebuild"

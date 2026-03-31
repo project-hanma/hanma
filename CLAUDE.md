@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
+`hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `hanma.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
 **Version:** 0.5.0 (accessible as `__version__` and via `--version` flag)
 
@@ -18,49 +18,49 @@ source .venv/bin/activate
 pip install markdown pygments pymdown-extensions pyyaml watchdog
 
 # Generate HTML into ./output/ (default)
-./ssg.py
+./hanma.py
 
 # Generate into a separate output directory
-./ssg.py --output dist/
+./hanma.py --output dist/
 
 # Generate with site name and serve locally (port inline or via --port)
-./ssg.py --name "My Blog" --serve
-./ssg.py --name "My Blog" --serve 9000
-./ssg.py --name "My Blog" --serve --port 9000
+./hanma.py --name "My Blog" --serve
+./hanma.py --name "My Blog" --serve 9000
+./hanma.py --name "My Blog" --serve --port 9000
 
 # Watch for changes and regenerate automatically (uses watchdog/inotify)
-./ssg.py --watch
-./ssg.py --watch --serve
+./hanma.py --watch
+./hanma.py --watch --serve
 
 # Generate into dist/ and serve from there
-./ssg.py --output dist/ --name "My Blog" --serve
+./hanma.py --output dist/ --name "My Blog" --serve
 
 # Use a custom theme
-./ssg.py --theme mytheme
+./hanma.py --theme mytheme
 
 # Preview what would be generated (no writes)
-./ssg.py --dry-run
+./hanma.py --dry-run
 
 # Target a specific file or directory
-./ssg.py path/to/dir
+./hanma.py path/to/dir
 
-# Use a config file (default: ssg.yaml in source directory)
-./ssg.py --config path/to/ssg.yaml
+# Use a config file (default: hanma.yaml in source directory)
+./hanma.py --config path/to/hanma.yaml
 
 # Scaffold a new site with sample content in ./site/
-./ssg.py --init
+./hanma.py --init
 
 # Scaffold into ./site/ even if it already contains files (wipes non-.gitkeep contents)
-./ssg.py --init --force
+./hanma.py --init --force
 
 # Generate sitemap.xml and absolute URLs in search.json
-./ssg.py --base-url https://example.com
+./hanma.py --base-url https://example.com
 
 # Only rebuild pages that changed since last build
-./ssg.py --incremental
+./hanma.py --incremental
 
 # Show version
-./ssg.py --version
+./hanma.py --version
 ```
 
 There is no build step or linter configured. Tests are run with pytest:
@@ -94,13 +94,13 @@ The pipeline runs in two passes over discovered Markdown files, orchestrated by 
 | `refresh` | int | Auto-refresh interval in seconds; omit or set to 0 to disable |
 | `layout` | string | `page` (default) or `post`; overrides directory-based default |
 
-**Site config file (`ssg.yml`):**
+**Site config file (`hanma.yml`):**
 
-The default config is `conf/ssg.yml` (next to `ssg.py`). Lookup order:
+The default config is `conf/hanma.yml` (next to `hanma.py`). Lookup order:
 1. `--config FILE` flag
-2. `conf/ssg.yml` (relative to `ssg.py`) — the shipped default
-3. `ssg.yml` at the root of the source directory
-4. `ssg.yaml` at the root of the source directory (legacy fallback)
+2. `conf/hanma.yml` (relative to `hanma.py`) — the shipped default
+3. `hanma.yml` at the root of the source directory
+4. `hanma.yaml` at the root of the source directory (legacy fallback)
 
 CLI flags always override config file values. Comment out any line in the config to revert that setting to its built-in default.
 
@@ -118,7 +118,7 @@ posts_label: Blog       # label for the posts listing nav link (default: "Blog")
 
 **Themes:**
 
-Themes live in `themes/<name>/` alongside `ssg.py`. Each theme directory contains:
+Themes live in `themes/<name>/` alongside `hanma.py`. Each theme directory contains:
 
 - `template.html` — required; uses `string.Template` `$variable` syntax
 - Any other files (CSS, images, fonts, etc.) are copied to the output root at generation time
@@ -132,7 +132,7 @@ Select a theme with `--theme NAME` (default: `default`). The `themes/default/` t
 Any `static/` directory at the root of the source directory is copied verbatim to `output/static/`. This is the mechanism for images, fonts, and other non-Markdown files.
 
 **Key implementation details:**
-- `load_site_config(config_path)` reads `ssg.yml` (or `ssg.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`, `posts_label`). CLI flags always override.
+- `load_site_config(config_path)` reads `hanma.yml` (or `hanma.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`, `posts_label`). CLI flags always override.
 - `load_theme(name)` reads `themes/<name>/template.html` and returns a `string.Template`. Exits cleanly if the theme or file is missing.
 - `copy_theme_assets(theme_dir, output_root)` copies all non-`template.html` files from the theme directory into the output root.
 - `copy_static_assets(source_root, output_root)` copies `source_root/static/` → `output_root/static/` using `shutil.copytree`. Does nothing if `static/` is absent.
@@ -145,7 +145,7 @@ Any `static/` directory at the root of the source directory is copied verbatim t
   - Other root-level pages appear next as top-level items.
   - A subdirectory with an `index.md` becomes a top-level nav item (using that index's title); other pages in that directory appear as dropdown items under it.
   - Pages in `posts/` are excluded from the page-based nav.
-  - If a posts listing exists (`posts.html`), a link to it is appended as the **last** nav item, labelled by `posts_label` (default `"Blog"`, configurable via `posts_label` in `ssg.yml`).
+  - If a posts listing exists (`posts.html`), a link to it is appended as the **last** nav item, labelled by `posts_label` (default `"Blog"`, configurable via `posts_label` in `hanma.yml`).
   - Headings are no longer used to generate dropdown items.
   - Navigation links are always relative to the output location, not the source. Generated pages (tag indexes, posts listing) are excluded from the page-based nav.
 - **Layout defaults:** Files under `posts/` default to `layout: post`; all other files default to `layout: page`. Front matter `layout` field overrides the directory-based default.
@@ -160,13 +160,13 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 - `_search_json_url(out_path, output_root, base_url)` computes the correct URL to `search.json` as seen from a given output page.
 - `init_scaffold(site_dir, force)` creates `index.md`, `about.md`, and `posts/hello-world.md` sample files in `site_dir`. `.gitkeep` is ignored when checking emptiness, so a directory containing only `.gitkeep` is treated as empty. Aborts with a non-zero exit if `site_dir` contains any real files unless `force=True`, in which case all non-`.gitkeep` contents are deleted before writing (preserving `.gitkeep`). Called by `--init`; `--force` maps to `force=True`.
 - `page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime)` returns `True` if the page must be regenerated. Triggers on: missing output, changed source mtime, newer template, or newer config file. Used by `--incremental` mode.
-- Build manifests are stored as `output_dir/.ssg_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float, "_config_mtime": float}`.
+- Build manifests are stored as `output_dir/.hanma_manifest.json`. Format: `{str(md_path): mtime, "_template_mtime": float, "_config_mtime": float}`.
 - `watch_and_rebuild()` uses `watchdog` (inotify/FSEvents/kqueue) when available, with a 300ms debounce timer. Falls back to 1-second polling if `watchdog` is not installed. The event handler ignores events from within `output_dir` and only reacts to source suffixes (`.md`, `.markdown`, `.yaml`, `.css`, `.js`) to prevent build output from triggering a rebuild loop.
 - The entire build pipeline is encapsulated in `_run_build()`, which is called both from `main()` and from the watch rebuild callback.
 
 ## Design Philosophy
 
-- **Minimal core, extensible themes** — `ssg.py` handles discovery, parsing, and orchestration; visual presentation is fully delegated to the active theme.
-- **Output directory by default** — `.html` files are written to `./output/` (relative to `ssg.py`) unless `--output DIR` is specified, in which case the source tree is mirrored into that directory. Source `.md` files are never modified.
+- **Minimal core, extensible themes** — `hanma.py` handles discovery, parsing, and orchestration; visual presentation is fully delegated to the active theme.
+- **Output directory by default** — `.html` files are written to `./output/` (relative to `hanma.py`) unless `--output DIR` is specified, in which case the source tree is mirrored into that directory. Source `.md` files are never modified.
 - **Self-contained output** — generated HTML embeds all CSS/JS inline; do not introduce CDN dependencies.
-- **Config file first, CLI override** — `ssg.yaml` provides project defaults; CLI flags always take precedence.
+- **Config file first, CLI override** — `hanma.yaml` provides project defaults; CLI flags always take precedence.
