@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ssg.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `ssg.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.4.6 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.4.7 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -91,6 +91,7 @@ The pipeline runs in two passes over discovered Markdown files, orchestrated by 
 | `date` | YYYY-MM-DD | Shown in page footer alongside author; page included in posts listing |
 | `tags` | list | Rendered as clickable tag links below content; generates `tags/<slug>.html` index pages |
 | `draft` | bool | If `true`, page is skipped entirely during generation |
+| `refresh` | int | Auto-refresh interval in seconds; omit or set to 0 to disable |
 
 **Site config file (`ssg.yml`):**
 
@@ -120,7 +121,7 @@ Themes live in `themes/<name>/` alongside `ssg.py`. Each theme directory contain
 - `template.html` — required; uses `string.Template` `$variable` syntax
 - Any other files (CSS, images, fonts, etc.) are copied to the output root at generation time
 
-Available template variables: `$title`, `$description`, `$author_meta`, `$keywords_meta`, `$author_line`, `$site_name`, `$date_str`, `$nav`, `$content`, `$source_file`, `$last_updated`, `$HIGHLIGHT_CSS`, `$sitemap_link`, `$search_json_url`
+Available template variables: `$title`, `$description`, `$author_meta`, `$keywords_meta`, `$refresh_meta`, `$author_line`, `$site_name`, `$date_str`, `$nav`, `$content`, `$source_file`, `$last_updated`, `$HIGHLIGHT_CSS`, `$sitemap_link`, `$search_json_url`
 
 Select a theme with `--theme NAME` (default: `default`). The `themes/default/` theme is the canonical reference implementation.
 
