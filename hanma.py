@@ -3,7 +3,7 @@
 hanma.py — Static Site Generator
 Converts Markdown files to HTML in-place, recursively.
 
-Version: 0.5.0
+Version: 0.5.1
 
 Usage:
     python hanma.py [directory]
@@ -16,7 +16,7 @@ Dependencies:
     pip install markdown pygments pyyaml watchdog
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 import html
 import json
