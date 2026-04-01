@@ -6,12 +6,12 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 
-from hanma_core.build import _run_build
-from hanma_core.config import load_site_config
-from hanma_core.convert import convert_md_to_html
-from hanma_core.scaffold import init_scaffold
-from hanma_core.theme import _load_theme_impl, copy_theme_assets
-from hanma_core.watch import watch_and_rebuild
+from app.build import _run_build
+from app.config import load_site_config
+from app.convert import convert_md_to_html
+from app.scaffold import init_scaffold
+from app.theme import _load_theme_impl, copy_theme_assets
+from app.watch import watch_and_rebuild
 
 # Anchor for themes/ and conf/ — same directory as hanma.py since all files are siblings
 _PROJECT_ROOT = Path(__file__).parent.parent

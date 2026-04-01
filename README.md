@@ -86,7 +86,7 @@ The recommended structure places all Markdown content under `site/`:
 ```
 project/
 ├── hanma.py              ← CLI entry point (thin launcher)
-├── hanma_core/           ← all generator logic
+├── app/           ← all generator logic
 ├── conf/
 │   └── hanma.yml         ← site config (optional)
 └── site/
@@ -374,7 +374,7 @@ Available variables in `template.html`:
 
 A pytest suite lives in `tests/test_hanma.py` and covers syntax checking, file
 discovery, conversion, CLI flags, navigation, and edge cases. It imports
-`hanma_core` directly for unit tests and invokes `hanma.py` via subprocess for
+`app` directly for unit tests and invokes `hanma.py` via subprocess for
 CLI integration tests.
 
 ```bash
