@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. `hanma.py` is a thin launcher (~25 lines); all logic lives in `hanma_core/` (15 modules); the HTML/CSS/JS template lives in `themes/default/template.html`.
+`hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. `hanma.py` is a thin launcher (~25 lines); all logic lives in `app/` (15 modules); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.6.0 (accessible as `hanma_core.__version__` and via `--version` flag)
+**Version:** 0.6.0 (accessible as `app.__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -75,8 +75,8 @@ CI runs automatically via Gitea Actions (`.gitea/workflows/ci.yml`) on every pus
 ## Repository Layout
 
 ```
-hanma.py              ← thin CLI launcher (~25 lines); adds hanma_core/ to sys.path and calls main()
-hanma_core/           ← all logic; importable as a package
+hanma.py              ← thin CLI launcher (~25 lines); adds app/ to sys.path and calls main()
+app/           ← all logic; importable as a package
   __init__.py         ← re-exports every public symbol; defines _THEMES_DIR and load_theme()
   cli.py              ← main(), _serve(), argparse, __version__
   build.py            ← _run_build() orchestration
@@ -94,17 +94,17 @@ hanma_core/           ← all logic; importable as a package
   scaffold.py         ← init_scaffold(), _SCAFFOLD_FILES
 themes/               ← theme directories (themes/<name>/template.html + assets)
 conf/                 ← default site config (conf/hanma.yml)
-tests/                ← pytest suite (imports hanma_core as "hanma")
+tests/                ← pytest suite (imports app as "hanma")
 ```
 
 **Notes for contributors:**
-- `hanma_core/_THEMES_DIR` is defined in `__init__.py` (not `theme.py`) so tests can monkey-patch it and `load_theme()` picks up the change at call time.
-- `hanma_core/convert.py` and `hanma_core/cli.py` each define their own local `_THEMES_DIR` for the internal `_load_theme_impl()` fallback — this does not participate in monkey-patching.
-- All `Path(__file__).parent.parent` references in `hanma_core/` resolve to the project root (one level up from `hanma_core/`), equivalent to the old `Path(__file__).parent` in the monolith.
+- `app/_THEMES_DIR` is defined in `__init__.py` (not `theme.py`) so tests can monkey-patch it and `load_theme()` picks up the change at call time.
+- `app/convert.py` and `app/cli.py` each define their own local `_THEMES_DIR` for the internal `_load_theme_impl()` fallback — this does not participate in monkey-patching.
+- All `Path(__file__).parent.parent` references in `app/` resolve to the project root (one level up from `app/`), equivalent to the old `Path(__file__).parent` in the monolith.
 
 ## Architecture
 
-The pipeline runs in two passes over discovered Markdown files, orchestrated by `_run_build()` in `hanma_core/build.py`:
+The pipeline runs in two passes over discovered Markdown files, orchestrated by `_run_build()` in `app/build.py`:
 
 1. **Discovery** — `find_markdown_files(root)` walks the directory tree, skipping dotfiles/dotdirs (`.git`, `.venv`) and `README.md` files.
 2. **Pass 1 (metadata)** — `collect_page_info()` extracts title and description from each file; output paths are computed here (in-place or under `--output` dir). Also builds `tags_map`, `dated_pages`, and `search_entries` for generated pages. Results are stored as `(md_path, out_html_path, title)` triples.
@@ -162,8 +162,8 @@ Select a theme with `--theme NAME` (default: `default`). The `themes/default/` t
 Any `static/` directory at the root of the source directory is copied verbatim to `output/static/`. This is the mechanism for images, fonts, and other non-Markdown files.
 
 **Key implementation details:**
-- `load_site_config(config_path)` in `hanma_core/config.py` reads `hanma.yml` (or `hanma.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`, `posts_label`). CLI flags always override.
-- `load_theme(name)` in `hanma_core/__init__.py` reads `themes/<name>/template.html` and returns a `string.Template`. Exits cleanly if the theme or file is missing. Wraps `_load_theme_impl(name, themes_dir)` from `hanma_core/theme.py` so `_THEMES_DIR` is read at call time.
+- `load_site_config(config_path)` in `app/config.py` reads `hanma.yml` (or `hanma.yaml`) and returns a dict with recognized keys (`name`, `base_url`, `output`, `theme`, `serve`, `port`, `watch`, `incremental`, `posts_label`). CLI flags always override.
+- `load_theme(name)` in `app/__init__.py` reads `themes/<name>/template.html` and returns a `string.Template`. Exits cleanly if the theme or file is missing. Wraps `_load_theme_impl(name, themes_dir)` from `app/theme.py` so `_THEMES_DIR` is read at call time.
 - `copy_theme_assets(theme_dir, output_root)` copies all non-`template.html` files from the theme directory into the output root.
 - `copy_static_assets(source_root, output_root)` copies `source_root/static/` → `output_root/static/` using `shutil.copytree`. Does nothing if `static/` is absent.
 - Syntax highlighting CSS is generated at startup via `_build_highlight_css()` using Pygments (`friendly` theme for light, `monokai` for dark) and injected as `$HIGHLIGHT_CSS`.
@@ -196,7 +196,7 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 
 ## Design Philosophy
 
-- **Minimal core, extensible themes** — `hanma_core/` handles discovery, parsing, and orchestration; visual presentation is fully delegated to the active theme.
+- **Minimal core, extensible themes** — `app/` handles discovery, parsing, and orchestration; visual presentation is fully delegated to the active theme.
 - **Output directory by default** — `.html` files are written to `./output/` (relative to `hanma.py`) unless `--output DIR` is specified, in which case the source tree is mirrored into that directory. Source `.md` files are never modified.
 - **Self-contained output** — generated HTML embeds all CSS/JS inline; do not introduce CDN dependencies.
 - **Config file first, CLI override** — `hanma.yaml` provides project defaults; CLI flags always take precedence.
