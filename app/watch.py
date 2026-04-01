@@ -4,8 +4,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from hanma_core.build import _run_build
-from hanma_core.files import find_markdown_files
+from app.build import _run_build
+from app.files import find_markdown_files
 
 try:
   from watchdog.observers import Observer

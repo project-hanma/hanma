@@ -9,7 +9,7 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
 
   Exits with a clear error message if the theme or template.html is missing.
   themes_dir is passed explicitly so callers can control the lookup path
-  (and tests can monkey-patch it via hanma_core._THEMES_DIR).
+  (and tests can monkey-patch it via app._THEMES_DIR).
   """
   theme_dir = (themes_dir / name).resolve()
   if not theme_dir.is_relative_to(themes_dir.resolve()):

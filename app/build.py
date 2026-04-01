@@ -4,16 +4,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from hanma_core.convert import convert_md_to_html
-from hanma_core.files import find_markdown_files, copy_static_assets, clean_stale_html
-from hanma_core.manifest import (
+from app.convert import convert_md_to_html
+from app.files import find_markdown_files, copy_static_assets, clean_stale_html
+from app.manifest import (
   load_build_manifest, save_build_manifest, page_needs_rebuild,
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY,
 )
-from hanma_core.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
-from hanma_core.parsing import collect_page_info
-from hanma_core.sidecar import build_sitemap_xml, build_search_json
-from hanma_core.theme import copy_theme_assets, _load_theme_impl
+from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
+from app.parsing import collect_page_info
+from app.sidecar import build_sitemap_xml, build_search_json
+from app.theme import copy_theme_assets, _load_theme_impl
 
 
 def _run_build(root: Path, output_dir: Path, site_name: str,

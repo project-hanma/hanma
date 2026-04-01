@@ -22,10 +22,10 @@ except ImportError:
   print("Install it with:  pip install markdown pygments pyyaml watchdog")
   sys.exit(1)
 
-from hanma_core.highlight import HIGHLIGHT_CSS
-from hanma_core.nav import build_nav_html
-from hanma_core.pages import _normalize_tag, _search_json_url
-from hanma_core.parsing import parse_front_matter, extract_title, extract_description
+from app.highlight import HIGHLIGHT_CSS
+from app.nav import build_nav_html
+from app.pages import _normalize_tag, _search_json_url
+from app.parsing import parse_front_matter, extract_title, extract_description
 
 # Used only for the fallback when no template is passed to convert_md_to_html.
 # Does not participate in test monkey-patching of _THEMES_DIR.
@@ -53,7 +53,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   search_json_url template variables.
   """
   if template is None:
-    from hanma_core.theme import _load_theme_impl
+    from app.theme import _load_theme_impl
     template, _ = _load_theme_impl("default", _THEMES_DIR)
   md_text = md_path.read_text(encoding="utf-8")
   front, body = parse_front_matter(md_text, source_path=md_path)
