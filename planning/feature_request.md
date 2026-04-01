@@ -79,6 +79,13 @@ Custom inline macros like `{{youtube id="abc123"}}`.
 
 ---
 
+## Architecture / Internals
+
+~~**Modularize `hanma.py` into a package**~~
+~~`hanma.py` had grown to ~1746 lines. Split into `hanma_core/` — a 15-module sibling package — with `hanma.py` becoming a thin ~25-line CLI launcher. Logic is grouped by concern: `build.py`, `cli.py`, `convert.py`, `parsing.py`, `nav.py`, `pages.py`, `sidecar.py`, `files.py`, `theme.py`, `config.py`, `highlight.py`, `manifest.py`, `watch.py`, `scaffold.py`. `hanma_core/__init__.py` re-exports every public symbol for test and import compatibility. Shipped in v0.6.0.~~
+
+---
+
 ## What We're Already Ahead On (No Action Needed)
 
 - **Self-contained HTML output** — No external CSS/JS after generation. No other mainstream SSG does this by default.
