@@ -61,8 +61,7 @@ pip install markdown pygments pymdown-extensions pyyaml watchdog
 deactivate
 ```
 
-The virtual environment directory (`.venv`) is automatically skipped by
-`hanma.py` during Markdown discovery.
+The virtual environment directory (`.venv`) is automatically skipped during Markdown discovery.
 
 ## Setup
 
@@ -86,13 +85,14 @@ The recommended structure places all Markdown content under `site/`:
 
 ```
 project/
-├── hanma.py
+├── hanma.py              ← CLI entry point (thin launcher)
+├── hanma_core/           ← all generator logic
 ├── conf/
 │   └── hanma.yml         ← site config (optional)
 └── site/
-    ├── index.md        ← homepage (labelled "Home" in navigation)
+    ├── index.md          ← homepage (labelled "Home" in navigation)
     ├── about.md
-    ├── static/         ← copied verbatim to output/static/
+    ├── static/           ← copied verbatim to output/static/
     │   └── logo.png
     └── posts/
         └── hello.md
@@ -373,7 +373,9 @@ Available variables in `template.html`:
 ## Testing
 
 A pytest suite lives in `tests/test_hanma.py` and covers syntax checking, file
-discovery, conversion, CLI flags, navigation, and edge cases.
+discovery, conversion, CLI flags, navigation, and edge cases. It imports
+`hanma_core` directly for unit tests and invokes `hanma.py` via subprocess for
+CLI integration tests.
 
 ```bash
 # Install pytest into your virtual environment (one-time)

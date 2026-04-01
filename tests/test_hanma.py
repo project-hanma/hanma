@@ -44,9 +44,12 @@ def write(path: Path, content: str) -> Path:
 # Import the module under test so we can call functions directly
 # ---------------------------------------------------------------------------
 
-spec = importlib.util.spec_from_file_location("hanma", SSG)
-hanma = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(hanma)
+# Add the project root to sys.path so hanma_core is importable, then import it
+# as "hanma" so all existing test references (hanma.func, hanma._THEMES_DIR) work.
+_PROJECT_ROOT = Path(__file__).parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+import hanma_core as hanma
 
 
 # ===========================================================================
