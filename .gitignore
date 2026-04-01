@@ -1,5 +1,4 @@
 .venv
-.claude
 .prompt
 output
 __pycache__
