@@ -9,4 +9,4 @@ site/*
 !site/.gitkeep
 site_bak/
 prompts.md
-planning/
+planning/PLAN-*
