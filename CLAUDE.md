@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. Core logic lives in `hanma.py` (~600 lines); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.5.0 (accessible as `__version__` and via `--version` flag)
+**Version:** 0.5.1 (accessible as `__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 

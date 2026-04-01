@@ -65,6 +65,9 @@ Suggest pages sharing the same tags. Depends on tag index pages being implemente
 ~~**Front Matter `refresh` Field**~~
 ~~Add a `refresh: <seconds>` front matter field that injects `<meta http-equiv="refresh" content="<seconds>" />` into the page `<head>`, causing the browser to auto-reload after the specified interval. Useful for live dashboards or status pages. Accepts a positive integer; absent or zero means no refresh.~~
 
+~~**Generator Meta Tag**~~
+~~Add `<meta name="generator" content="hanma" />` to the default theme's `<head>`. Standard practice for SSGs (WordPress, Ghost, Hugo, Grav all do this). Single-line addition to `themes/default/template.html`.~~
+
 **Word Count / Reading Time**
 Inject "5 min read" into the template via a new template variable.
 
