@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from hanma_core.highlight import HIGHLIGHT_CSS
-from hanma_core.nav import build_nav_html
+from app.highlight import HIGHLIGHT_CSS
+from app.nav import build_nav_html
 
 
 def _normalize_tag(tag: str) -> str:
