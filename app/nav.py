@@ -4,6 +4,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
+from app.files import POSTS_DIR_NAME
+
 
 def build_nav_html(current_out_html: Path,
          nav_pages: list[tuple],
@@ -70,8 +72,6 @@ def build_nav_html(current_out_html: Path,
   # dir_key = "" for root, else the relative dir string.
   # entry = (out_html_path, title, md_path, layout)
   groups: dict = OrderedDict()
-
-  POSTS_DIR_NAME = "posts"
 
   for entry in nav_pages:
     page_html, page_title, md_path, layout = entry

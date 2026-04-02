@@ -1,5 +1,6 @@
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -66,6 +67,26 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
       plain = re.sub(r"[*_`\[\]()!]", "", stripped)
       return plain[:max_chars]
   return ""
+
+
+def parse_date_field(fm_date_raw) -> str:
+  """Convert a front matter date value to a human-readable string.
+
+  Accepts either a YYYY-MM-DD string or a datetime.date object (as parsed by
+  PyYAML). Returns a formatted string like "January 01, 2025", or an empty
+  string if the value is absent or malformed. Malformed values are silently
+  ignored — callers should warn the user separately if needed.
+  """
+  if fm_date_raw is None:
+    return ""
+  try:
+    if isinstance(fm_date_raw, str):
+      d = datetime.strptime(fm_date_raw, "%Y-%m-%d")
+    else:  # PyYAML parses YYYY-MM-DD as datetime.date
+      d = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
+    return d.strftime("%B %d, %Y")
+  except (ValueError, AttributeError):
+    return ""
 
 
 def collect_page_info(md_path: Path) -> tuple:

@@ -12,13 +12,12 @@ from app.convert import convert_md_to_html
 from app.scaffold import init_scaffold
 from app.theme import _load_theme_impl, copy_theme_assets
 from app.watch import watch_and_rebuild
+from app._version import __version__
 
 # Anchor for themes/ and conf/ — same directory as hanma.py since all files are siblings
 _PROJECT_ROOT = Path(__file__).parent.parent
 _THEMES_DIR = _PROJECT_ROOT / "themes"
 _CONF_DIR = _PROJECT_ROOT / "conf"
-
-__version__ = "0.1.91"
 
 
 def main() -> None:
