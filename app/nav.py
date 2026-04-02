@@ -125,8 +125,9 @@ def build_nav_html(current_out_html: Path,
       idx = group["index"]
       children = group["children"]
       if idx is not None:
-        # Directory with an index: top-level item = index, dropdown = children
-        idx_html, idx_title, _, _ = idx
+        # Directory with an index: top-level item links to index using folder name, dropdown = children
+        idx_html, _, _, _ = idx
+        idx_title = dir_key.replace("-", " ").replace("_", " ").title()
         dropdown = []
         for child_html, child_title, _, _ in children:
           safe_u = html.escape(_rel_url(child_html), quote=True)
@@ -136,10 +137,27 @@ def build_nav_html(current_out_html: Path,
           dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
         other_items.append(_li(idx_html, idx_title, dropdown if dropdown else None))
       else:
-        # No index — render each child as its own top-level item
-        for entry in children:
-          page_html, page_title, md_path, layout = entry
-          other_items.append(_li(page_html, page_title))
+        # No index — use the folder name as a non-linking dropdown header
+        if children:
+          folder_label = html.escape(dir_key.replace("-", " ").replace("_", " ").title())
+          dropdown = []
+          for child_html, child_title, _, _ in children:
+            safe_u = html.escape(_rel_url(child_html), quote=True)
+            safe_t = html.escape(child_title)
+            is_cur = child_html == current_out_html
+            cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
+            dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
+          is_current_group = any(ch == current_out_html for ch, _, _, _ in children)
+          css = ' class="nav-current"' if is_current_group else ""
+          drop_html = "\n    <ul>\n" + "".join(
+            f'      <li><a href="{u}">{t}</a></li>\n'
+            for u, t in dropdown
+          ) + "    </ul>"
+          other_items.append(
+            f'  <li{css}>\n'
+            f'    <span class="nav-folder">{folder_label}</span>'
+            f'{drop_html}\n  </li>'
+          )
 
   items = ([home_item] if home_item else []) + other_items
 
