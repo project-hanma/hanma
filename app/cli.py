@@ -18,7 +18,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 _THEMES_DIR = _PROJECT_ROOT / "themes"
 _CONF_DIR = _PROJECT_ROOT / "conf"
 
-__version__ = "0.6.1"
+__version__ = "0.1.91"
 
 
 def main() -> None:
