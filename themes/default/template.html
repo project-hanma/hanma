@@ -706,10 +706,11 @@
       li.textContent = "No results.";
       drop.appendChild(li);
     } else {
+      var searchBase = new URL(INDEX_URL, location.href);
       results.slice(0, 8).forEach(function (r) {
         var li = document.createElement("li");
         var a  = document.createElement("a");
-        a.href = r.url;
+        a.href = new URL(r.url, searchBase).href;
         a.innerHTML = esc(r.title) +
           (r.description ? '<span class="search-desc">' + esc(r.description) + '</span>' : "");
         li.appendChild(a);
