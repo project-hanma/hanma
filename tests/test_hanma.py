@@ -416,6 +416,58 @@ class TestNavigation:
     html = (out_dir / "about.html").read_text()
     assert html.index("index.html") < html.index("about.html")
 
+  def test_sort_index_overrides_filename_order(self, tmp_path):
+    # Without sort_index, "zebra" sorts before "about" alphabetically is wrong —
+    # actually "about" < "zebra" alphabetically so we use "zzz" to confirm sort_index wins.
+    write(tmp_path / "index.md", "# Home\n\nContent.")
+    write(tmp_path / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
+    write(tmp_path / "about.md", "# About\n\nContent.")
+    out_dir = tmp_path / "out"
+    run(str(tmp_path), "--output", str(out_dir))
+    html = (out_dir / "index.html").read_text()
+    # zzz.html has sort_index: 1 so it should appear before about.html
+    assert html.index("zzz.html") < html.index("about.html")
+
+  def test_sort_index_pages_before_unsorted(self, tmp_path):
+    # Pages without sort_index should appear after all pages that have one.
+    write(tmp_path / "index.md", "# Home\n\nContent.")
+    write(tmp_path / "alpha.md", "# Alpha\n\nContent.")  # no sort_index
+    write(tmp_path / "beta.md", "---\nsort_index: 2\n---\n# Beta\n\nContent.")
+    write(tmp_path / "gamma.md", "---\nsort_index: 1\n---\n# Gamma\n\nContent.")
+    out_dir = tmp_path / "out"
+    run(str(tmp_path), "--output", str(out_dir))
+    html = (out_dir / "index.html").read_text()
+    # gamma (sort_index:1) < beta (sort_index:2) < alpha (no sort_index)
+    assert html.index("gamma.html") < html.index("beta.html")
+    assert html.index("beta.html") < html.index("alpha.html")
+
+  def test_sort_index_on_subdir_index_orders_group(self, tmp_path):
+    # sort_index on a subdirectory's index.md controls where the group appears.
+    write(tmp_path / "index.md", "# Home\n\nContent.")
+    write(tmp_path / "about.md", "# About\n\nContent.")
+    sub = tmp_path / "docs"
+    sub.mkdir()
+    write(sub / "index.md", "---\nsort_index: 1\n---\n# Docs\n\nContent.")
+    out_dir = tmp_path / "out"
+    run(str(tmp_path), "--output", str(out_dir))
+    html = (out_dir / "index.html").read_text()
+    # docs/ group (sort_index:1) should appear before about (no sort_index)
+    assert html.index("docs/index.html") < html.index("about.html")
+
+  def test_sort_index_orders_dropdown_children(self, tmp_path):
+    # sort_index on pages within a subdirectory controls their dropdown order.
+    write(tmp_path / "index.md", "# Home\n\nContent.")
+    sub = tmp_path / "docs"
+    sub.mkdir()
+    write(sub / "index.md", "# Docs\n\nContent.")
+    write(sub / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
+    write(sub / "aaa.md", "# AAA\n\nContent.")
+    out_dir = tmp_path / "out"
+    run(str(tmp_path), "--output", str(out_dir))
+    html = (out_dir / "index.html").read_text()
+    # zzz (sort_index:1) should appear before aaa (no sort_index) in dropdown
+    assert html.index("zzz.html") < html.index("aaa.html")
+
 
 # ===========================================================================
 # 11. Edge cases
@@ -676,8 +728,8 @@ class TestXSSEscaping:
   def test_nav_title_xss_escaped(self, tmp_path):
     src = write(tmp_path / "page.md", "# T\n\nContent.")
     out = tmp_path / "page.html"
-    # nav_pages now takes 4-tuples: (out_html, title, md_path, layout)
-    nav_pages = [(out, '<script>nav</script>', src, 'page')]
+    # nav_pages takes 5-tuples: (out_html, title, md_path, layout, sort_index)
+    nav_pages = [(out, '<script>nav</script>', src, 'page', None)]
     hanma.convert_md_to_html(src, out, "S", nav_pages=nav_pages)
     html_text = out.read_text()
     assert "<script>nav</script>" not in html_text
