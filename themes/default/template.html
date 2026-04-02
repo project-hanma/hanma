@@ -189,6 +189,26 @@
       border-bottom-color: var(--accent);
     }
 
+    /* Folder label — same appearance as a nav link but not an anchor */
+    .site-nav > ul > li > span.nav-folder {
+      display: block;
+      font-family: var(--font-ui);
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      color: var(--text);
+      padding: 0.65rem 1rem;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      cursor: default;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .site-nav > ul > li:hover > span.nav-folder,
+    .site-nav > ul > li:focus-within > span.nav-folder {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
     /* Dropdown (H3s) */
     .site-nav > ul > li > ul {
       display: none;
@@ -249,7 +269,8 @@
     }
 
     /* Current page indicator */
-    .site-nav > ul > li.nav-current > a {
+    .site-nav > ul > li.nav-current > a,
+    .site-nav > ul > li.nav-current > span.nav-folder {
       color: var(--accent);
       border-bottom-color: var(--accent);
       font-weight: 600;
