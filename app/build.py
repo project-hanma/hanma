@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 from app.convert import convert_md_to_html
-from app.files import find_markdown_files, copy_static_assets, clean_stale_html
+from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.manifest import (
   load_build_manifest, save_build_manifest, page_needs_rebuild,
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY,
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
-from app.parsing import collect_page_info
+from app.parsing import collect_page_info, parse_date_field
 from app.sidecar import build_sitemap_xml, build_search_json
 from app.theme import copy_theme_assets, _load_theme_impl
 
@@ -56,8 +56,6 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   dated_pages: list[tuple] = []       # [(out_html, title, date_obj, description)]
   search_entries: list[dict] = []
 
-  POSTS_DIR_NAME = "posts"
-
   for md_path in files:
     title, description, front = collect_page_info(md_path)
     if front.get("draft") is True:
@@ -84,18 +82,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     if isinstance(fm_tags, list):
       for tag in fm_tags:
         tag_str = str(tag)
-        # Parse date for sorted tag listing
-        date_str = ""
-        fm_date_raw = front.get("date")
-        if fm_date_raw is not None:
-          try:
-            if isinstance(fm_date_raw, str):
-              d = datetime.strptime(fm_date_raw, "%Y-%m-%d")
-            else:
-              d = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
-            date_str = d.strftime("%B %d, %Y")
-          except (ValueError, AttributeError):
-            pass
+        date_str = parse_date_field(front.get("date"))
         tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
 
     # Collect pages for posts listing: all layout='post' pages go here.

@@ -21,10 +21,9 @@ class _HanmaEventHandler(_WatchdogHandler):
 
   _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".css", ".js"}
 
-  def __init__(self, rebuild_fn, root: Path, theme_dir: Path, output_dir: Optional[Path] = None) -> None:
+  def __init__(self, rebuild_fn, theme_dir: Path, output_dir: Optional[Path] = None) -> None:
     super().__init__()
     self._rebuild = rebuild_fn
-    self._root = root
     self._theme_dir = theme_dir
     self._output_dir = output_dir
     self._lock = threading.Lock()
@@ -120,9 +119,11 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     except Exception as exc:
       print(f"  [watch] build error: {exc}")
 
-  handler = _HanmaEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
+  handler = _HanmaEventHandler(rebuild, theme_dir, output_dir=output_dir)
   observer = Observer()
   observer.schedule(handler, str(root), recursive=True)
+  # Only schedule theme_dir separately when it lives outside the source tree.
+  # If theme_dir is nested under root the recursive watch above already covers it.
   if theme_dir != root and not theme_dir.is_relative_to(root):
     observer.schedule(handler, str(theme_dir), recursive=True)
   observer.start()

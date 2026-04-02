@@ -1274,7 +1274,7 @@ class TestWatchdogWatch:
 
   @watchdog_available
   def test_hanma_event_handler_relevance(self, tmp_path):
-    handler = hanma._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: None, tmp_path)
     assert handler._is_relevant("file.md") is True
     assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
     assert handler._is_relevant("file.yaml") is True
@@ -1285,7 +1285,7 @@ class TestWatchdogWatch:
   def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
     from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
     triggered = []
-    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path)
     handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
     handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
     assert triggered == [], "open/close events must not trigger rebuild"
@@ -1414,3 +1414,75 @@ class TestSearchJsonUrl:
     out_path = tmp_path / "page.html"
     url = hanma._search_json_url(out_path, None, "")
     assert url == "search.json"
+
+
+# ===========================================================================
+# 30. parse_date_field
+# ===========================================================================
+
+
+class TestParseDateField:
+  def test_valid_string_date(self):
+    assert hanma.parse_date_field("2025-06-15") == "June 15, 2025"
+
+  def test_none_returns_empty(self):
+    assert hanma.parse_date_field(None) == ""
+
+  def test_malformed_string_returns_empty(self):
+    assert hanma.parse_date_field("not-a-date") == ""
+
+  def test_invalid_month_returns_empty(self):
+    assert hanma.parse_date_field("2025-13-01") == ""
+
+  def test_date_object_from_pyyaml(self):
+    import datetime
+    d = datetime.date(2024, 1, 5)
+    assert hanma.parse_date_field(d) == "January 05, 2024"
+
+
+# ===========================================================================
+# 31. load_site_config
+# ===========================================================================
+
+
+class TestLoadSiteConfig:
+  def test_unknown_keys_are_dropped(self, tmp_path):
+    cfg = tmp_path / "hanma.yml"
+    cfg.write_text("name: Test\nunknown_key: foo\n")
+    result = hanma.load_site_config(cfg)
+    assert "name" in result
+    assert "unknown_key" not in result
+
+  def test_missing_file_returns_empty(self, tmp_path):
+    result = hanma.load_site_config(tmp_path / "nonexistent.yml")
+    assert result == {}
+
+  def test_malformed_yaml_returns_empty(self, tmp_path, capsys):
+    cfg = tmp_path / "hanma.yml"
+    cfg.write_text("key: [unclosed\n")
+    result = hanma.load_site_config(cfg)
+    assert result == {}
+    captured = capsys.readouterr()
+    assert "Warning" in captured.err
+
+  def test_non_dict_yaml_returns_empty(self, tmp_path):
+    cfg = tmp_path / "hanma.yml"
+    cfg.write_text("- item1\n- item2\n")
+    result = hanma.load_site_config(cfg)
+    assert result == {}
+
+
+# ===========================================================================
+# 32. save_build_manifest OSError warning
+# ===========================================================================
+
+
+class TestSaveBuildManifest:
+  def test_oserror_prints_warning(self, tmp_path, capsys):
+    # Write to a path that can't be created (parent is a file, not a dir)
+    fake_parent = tmp_path / "not_a_dir"
+    fake_parent.write_text("I am a file")
+    bad_path = fake_parent / "manifest.json"
+    hanma.save_build_manifest(bad_path, {"key": 1.0})
+    captured = capsys.readouterr()
+    assert "warning" in captured.err.lower()
