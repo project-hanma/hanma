@@ -1222,6 +1222,30 @@ class TestIncrementalBuilds:
     result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert "skip" not in result.stdout.lower() or "Updated" in (out_dir / "page.html").read_text()
 
+  def test_stale_removal_forces_nav_rebuild(self, tmp_path):
+    """When a source file is deleted, remaining pages must be rebuilt so their
+    nav no longer references the removed page."""
+    write(tmp_path / "index.md", "# Home\n\nHome page.")
+    write(tmp_path / "about.md", "# About\n\nAbout page.")
+    extra = write(tmp_path / "extra.md", "# Extra\n\nExtra page.")
+    out_dir = tmp_path / "out"
+    # First build: all three pages, each with nav links to the others.
+    run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    assert (out_dir / "extra.html").exists()
+    # Confirm nav contains the extra link in the remaining pages.
+    assert "extra" in (out_dir / "index.html").read_text().lower()
+
+    # Remove the extra source file and rebuild incrementally.
+    extra.unlink()
+    result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+
+    # The stale HTML must have been cleaned.
+    assert not (out_dir / "extra.html").exists()
+    # Remaining pages must have been rebuilt (not skipped) and must no longer
+    # contain the nav link to the deleted page.
+    assert "extra" not in (out_dir / "index.html").read_text().lower()
+    assert "skip" not in result.stdout.lower()
+
   def test_page_needs_rebuild_missing_output(self, tmp_path):
     md = write(tmp_path / "page.md", "# Page\n\nContent.")
     out_html = tmp_path / "page.html"
