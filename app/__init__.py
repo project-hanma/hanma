@@ -9,7 +9,7 @@ Re-exports every public symbol so that tests can do:
 from pathlib import Path
 
 # ── Version ───────────────────────────────────────────────────────────────────
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 # ── _THEMES_DIR: defined here so tests can monkey-patch app._THEMES_DIR
 # and load_theme() (defined below) picks it up at call time. ──────────────────
