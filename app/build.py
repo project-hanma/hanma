@@ -8,7 +8,8 @@ from app.convert import convert_md_to_html
 from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.manifest import (
   load_build_manifest, save_build_manifest, page_needs_rebuild,
-  _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY,
+  compute_nav_signature,
+  _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY, _MANIFEST_NAV_KEY,
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
 from app.parsing import collect_page_info, parse_date_field
@@ -169,7 +170,6 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     copy_static_assets(root, output_dir)
 
   # ── Remove stale HTML files with no corresponding source ──────────────
-  stale_removed = False
   if not dry_run and output_dir.is_dir():
     stale = clean_stale_html(output_dir, expected_html)
     for path in stale:
@@ -178,17 +178,16 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       except ValueError:
         rel = path
       print(f"  [clean] removed stale {rel}")
-    if stale:
-      stale_removed = True
 
   ok = 0
   errors = 0
   skipped = 0
 
   # ── Pass 2: generate HTML with full nav ───────────────────────────────
-  # If stale pages were removed, every remaining page must be regenerated so
-  # that the nav no longer contains links to the deleted files.
-  incremental_effective = incremental and not stale_removed
+  # Compute a signature of the current nav set. If it differs from the last
+  # build (pages added, removed, or renamed), every page must be regenerated
+  # so the nav stays consistent.
+  nav_sig = compute_nav_signature(nav_pages) if nav_pages else ""
 
   for md_path, out_html, _title, layout in all_files:
     try:
@@ -205,7 +204,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       continue
 
     # Incremental skip check
-    if incremental_effective and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime):
+    if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime, nav_sig):
       try:
         out_rel = out_html.relative_to(output_dir)
       except ValueError:
@@ -310,6 +309,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   if incremental and manifest_path is not None:
     manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
     manifest[_MANIFEST_CONFIG_KEY] = config_mtime
+    manifest[_MANIFEST_NAV_KEY] = nav_sig
     save_build_manifest(manifest_path, manifest)
 
   if not dry_run:
