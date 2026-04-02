@@ -2,6 +2,8 @@ import shutil
 import sys
 from pathlib import Path
 
+POSTS_DIR_NAME = "posts"
+
 
 def find_markdown_files(root: Path) -> list[Path]:
   """Recursively find all .md and .markdown files under root.

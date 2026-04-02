@@ -25,7 +25,7 @@ except ImportError:
 from app.highlight import HIGHLIGHT_CSS
 from app.nav import build_nav_html
 from app.pages import _normalize_tag, _search_json_url
-from app.parsing import parse_front_matter, extract_title, extract_description
+from app.parsing import parse_front_matter, extract_title, extract_description, parse_date_field
 
 # Used only for the fallback when no template is passed to convert_md_to_html.
 # Does not participate in test monkey-patching of _THEMES_DIR.
@@ -68,16 +68,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   fm_tags = front.get("tags", [])
 
   # Build a human-readable date string from front matter date field
-  fm_date_str = ""
-  if fm_date_raw is not None:
-    try:
-      if isinstance(fm_date_raw, str):
-        fm_date_obj = datetime.strptime(fm_date_raw, "%Y-%m-%d")
-      else:  # PyYAML parses YYYY-MM-DD as datetime.date
-        fm_date_obj = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
-      fm_date_str = fm_date_obj.strftime("%B %d, %Y")
-    except (ValueError, AttributeError):
-      pass
+  fm_date_str = parse_date_field(fm_date_raw)
 
   # Footer attribution line (author and/or date)
   fm_author_esc = html.escape(fm_author)
