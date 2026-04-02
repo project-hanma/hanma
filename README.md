@@ -16,7 +16,7 @@ It builds your blog. That's mostly it.
 - Recurses into sub-directories automatically, mirroring the source tree
 - Defaults to `./site/` as the content root (falls back to current directory)
 - `index.md` becomes the homepage — labelled **Home** and pinned first in the nav
-- Folder-based navigation bar — "Home" pinned first; pages grouped by directory with dropdown menus; posts listing link ("Blog" by default) always last
+- Folder-based navigation bar — "Home" pinned first; pages grouped by directory with dropdown menus; posts listing link ("Blog" by default) always last; optional `sort_index` front matter controls item order
 - Responsive layout — 80% width centred, collapses cleanly on mobile
 - Dark mode with OS preference detection and manual toggle (persisted via `localStorage`)
 - Syntax-highlighted fenced code blocks (Pygments — themed per light/dark mode)
@@ -260,6 +260,8 @@ tags:
   - web
 draft: false
 refresh: 60
+layout: post
+sort_index: 2
 ---
 
 # Content starts here
@@ -277,6 +279,7 @@ All fields are optional. When present they take effect as follows:
 | `tags` | list | Rendered as a tag strip below the content; generates `tags/<slug>.html` index pages; added as `<meta name="keywords">` |
 | `draft` | bool | If `true`, the page is silently skipped during generation |
 | `refresh` | int | Auto-refresh interval in seconds — injects `<meta http-equiv="refresh">` into the page head; omit or set to `0` to disable |
+| `sort_index` | int | Navigation sort priority (starting at `1`); lower values appear earlier; pages without `sort_index` retain their default alphabetical order but appear after all pages that have one. For subdirectory groups the `sort_index` of `index.md` controls the group's position; for index-less folders the lowest `sort_index` among the folder's children is used. Home and Blog are always pinned first and last regardless. |
 
 ## Generated Pages
 

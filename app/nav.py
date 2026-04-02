@@ -25,7 +25,10 @@ def build_nav_html(current_out_html: Path,
    (labelled posts_label, default "Blog").
   - Headings are no longer used to generate dropdown menu items.
 
-  nav_pages is a list of (out_html_path, title, md_path, layout) tuples.
+  nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples.
+  sort_index, when set (integer >= 1), controls the order of top-level nav items and
+  dropdown items: lower values appear first; items without sort_index retain their
+  discovery order but appear after all items that have a sort_index.
   output_root is the output directory root (used to compute relative depth).
   posts_out is the Path to the generated posts.html (or None if no posts exist).
   posts_label is the display label for the posts link.
@@ -70,11 +73,11 @@ def build_nav_html(current_out_html: Path,
   # Group pages by their parent directory (relative to output_root).
   # Structure: {dir_key: {"index": entry|None, "children": [entry, ...]}}
   # dir_key = "" for root, else the relative dir string.
-  # entry = (out_html_path, title, md_path, layout)
+  # entry = (out_html_path, title, md_path, layout, sort_index)
   groups: dict = OrderedDict()
 
   for entry in nav_pages:
-    page_html, page_title, md_path, layout = entry
+    page_html, page_title, md_path, layout, sort_index = entry
     depth = _depth(page_html)
 
     # Determine the group key (the directory relative to output_root)
@@ -109,55 +112,70 @@ def build_nav_html(current_out_html: Path,
   home_item: Optional[str] = None
   other_items: list[str] = []
 
+  def _si_key(si) -> tuple:
+    """Sort key for a raw sort_index value: sorted entries first, unsorted last."""
+    return (1 if si is None else 0, si if si is not None else 0)
+
+  # Collect (sort_index, li_html) pairs so root pages and subdir groups can be
+  # sorted together before appending to other_items.
+  pending: list[tuple] = []  # (sort_index, li_html)
+
   for dir_key, group in groups.items():
     if dir_key == "":
-      # Root-level pages: home first, rest in discovery order
+      # Root-level pages: extract home, collect the rest with their sort_index
       for entry in group["children"]:
-        page_html, page_title, md_path, layout = entry
+        page_html, page_title, md_path, layout, sort_index = entry
         li = _li(page_html, page_title)
         if page_html.stem.lower() == "index" and (
           output_root is None or page_html.parent == output_root
         ):
           home_item = li
         else:
-          other_items.append(li)
+          pending.append((sort_index, li))
     else:
       idx = group["index"]
       children = group["children"]
       if idx is not None:
-        # Directory with an index: top-level item links to index using folder name, dropdown = children
-        idx_html, _, _, _ = idx
+        # Directory with an index: sort_index comes from the index.md entry
+        idx_html, _, _, _, idx_si = idx
         idx_title = dir_key.replace("-", " ").replace("_", " ").title()
         dropdown = []
-        for child_html, child_title, _, _ in children:
+        for child_html, child_title, _, _, _ in sorted(children, key=lambda e: _si_key(e[4])):
           safe_u = html.escape(_rel_url(child_html), quote=True)
           safe_t = html.escape(child_title)
           is_cur = child_html == current_out_html
           cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
           dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
-        other_items.append(_li(idx_html, idx_title, dropdown if dropdown else None))
+        pending.append((idx_si, _li(idx_html, idx_title, dropdown if dropdown else None)))
       else:
-        # No index — use the folder name as a non-linking dropdown header
+        # No index — use the folder name as a non-linking dropdown header;
+        # sort_index for the group comes from the first child that has one, else None.
         if children:
+          group_si = next((e[4] for e in children if e[4] is not None), None)
           folder_label = html.escape(dir_key.replace("-", " ").replace("_", " ").title())
           dropdown = []
-          for child_html, child_title, _, _ in children:
+          for child_html, child_title, _, _, _ in sorted(children, key=lambda e: _si_key(e[4])):
             safe_u = html.escape(_rel_url(child_html), quote=True)
             safe_t = html.escape(child_title)
             is_cur = child_html == current_out_html
             cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
             dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
-          is_current_group = any(ch == current_out_html for ch, _, _, _ in children)
+          is_current_group = any(ch == current_out_html for ch, _, _, _, _ in children)
           css = ' class="nav-current"' if is_current_group else ""
           drop_html = "\n    <ul>\n" + "".join(
             f'      <li><a href="{u}">{t}</a></li>\n'
             for u, t in dropdown
           ) + "    </ul>"
-          other_items.append(
+          pending.append((group_si, (
             f'  <li{css}>\n'
             f'    <span class="nav-folder">{folder_label}</span>'
             f'{drop_html}\n  </li>'
-          )
+          )))
+
+  # Sort pending items: sort_index defined → ascending; no sort_index → original order
+  # Use enumerate to preserve discovery order as a stable tiebreaker.
+  pending.sort(key=lambda t: _si_key(t[0]))
+  other_items.extend(li for _, li in pending)
 
   items = ([home_item] if home_item else []) + other_items
 

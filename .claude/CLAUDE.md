@@ -127,6 +127,7 @@ The pipeline runs in two passes over discovered Markdown files, orchestrated by 
 | `draft` | bool | If `true`, page is skipped entirely during generation |
 | `refresh` | int | Auto-refresh interval in seconds; omit or set to 0 to disable |
 | `layout` | string | `page` (default) or `post`; overrides directory-based default |
+| `sort_index` | int | Navigation sort priority (starting at 1); lower values appear first; pages without `sort_index` retain discovery order but appear after all sorted pages. For subdirectory groups, the `sort_index` of `index.md` controls the group's position; for index-less folders, the lowest `sort_index` among its children is used. |
 
 **Site config file (`hanma.yml`):**
 
@@ -174,7 +175,7 @@ Any `static/` directory at the root of the source directory is copied verbatim t
 - Dark mode toggles a `data-theme` attribute on `<html>`, persisted via `localStorage`.
 - Generated HTML is fully self-contained — no external resources after generation.
 - `index.md` at the root of the target directory is treated as the site homepage and titled "Home" in navigation. Subdirectory `index.md` files use their own title.
-- **Navigation is folder-based, not heading-based.** `build_nav_html()` receives `(out_html_path, title, md_path, layout)` tuples and builds a two-level nav:
+- **Navigation is folder-based, not heading-based.** `build_nav_html()` receives `(out_html_path, title, md_path, layout, sort_index)` tuples and builds a two-level nav:
   - "Home" (root `index.md`) is always pinned as the first nav item.
   - Other root-level pages appear next as top-level items.
   - A subdirectory with an `index.md` becomes a top-level nav item (using that index's title); other pages in that directory appear as dropdown items under it.
