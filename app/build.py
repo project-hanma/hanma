@@ -169,6 +169,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     copy_static_assets(root, output_dir)
 
   # ── Remove stale HTML files with no corresponding source ──────────────
+  stale_removed = False
   if not dry_run and output_dir.is_dir():
     stale = clean_stale_html(output_dir, expected_html)
     for path in stale:
@@ -177,12 +178,18 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       except ValueError:
         rel = path
       print(f"  [clean] removed stale {rel}")
+    if stale:
+      stale_removed = True
 
   ok = 0
   errors = 0
   skipped = 0
 
   # ── Pass 2: generate HTML with full nav ───────────────────────────────
+  # If stale pages were removed, every remaining page must be regenerated so
+  # that the nav no longer contains links to the deleted files.
+  incremental_effective = incremental and not stale_removed
+
   for md_path, out_html, _title, layout in all_files:
     try:
       rel = md_path.relative_to(root)
@@ -198,7 +205,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       continue
 
     # Incremental skip check
-    if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime):
+    if incremental_effective and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime):
       try:
         out_rel = out_html.relative_to(output_dir)
       except ValueError:
