@@ -51,7 +51,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         pass
 
   # ── Pass 1: collect titles, output paths, and derived data ───────────
-  all_files: list[tuple] = []  # (md_path, out_html, title, layout)
+  all_files: list[tuple] = []  # (md_path, out_html, title, layout, sort_index)
   drafts = 0
   tags_map: dict[str, list] = {}      # tag -> [(out_html, title, date_str)]
   dated_pages: list[tuple] = []       # [(out_html, title, date_obj, description)]
@@ -75,8 +75,10 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     in_posts_dir = len(rel_parts) > 1 and rel_parts[0] == POSTS_DIR_NAME
     default_layout = "post" if in_posts_dir else "page"
     layout = str(front.get("layout", default_layout)).strip().lower()
+    raw_si = front.get("sort_index")
+    sort_index = int(raw_si) if raw_si is not None else None
 
-    all_files.append((md_path, out_html, title, layout))
+    all_files.append((md_path, out_html, title, layout, sort_index))
 
     # Collect tags
     fm_tags = front.get("tags", [])
@@ -109,10 +111,10 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     })
 
   # index.html always listed first, everything else in discovery order
-  all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
+  all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))  # (md_path, out_html, title, layout, sort_index)
 
   # Single-file invocations get no cross-page nav (nothing to link to).
-  # nav_pages entries: (out_html, title, md_path, layout)
+  # nav_pages entries: (out_html, title, md_path, layout, sort_index)
   # Posts with layout='post' from OUTSIDE the posts/ dir are included in nav.
   # Pages inside posts/ are excluded from nav (they appear in posts listing).
   def _in_posts_dir(md_path: Path) -> bool:
@@ -124,8 +126,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 
   nav_pages = (
     [
-      (out_html, title, md_path, layout)
-      for md_path, out_html, title, layout in all_files
+      (out_html, title, md_path, layout, sort_index)
+      for md_path, out_html, title, layout, sort_index in all_files
       if not _in_posts_dir(md_path)
     ]
     if len(all_files) > 1 else []
@@ -135,7 +137,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   tags_out_dir = output_dir / "tags"
 
   # ── Compute expected HTML (includes generated pages) ─────────────────
-  expected_html: set[Path] = {out_html for _, out_html, _, _ in all_files}
+  expected_html: set[Path] = {out_html for _, out_html, _, _, _ in all_files}
 
   # Tag index pages
   tag_out_paths: dict[str, Path] = {}
@@ -149,7 +151,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   # /posts/ URL serves the listing directly (no directory listing fallback).
   # Skipped if posts/index.md already exists as a source file.
   posts_out_path = output_dir / "posts" / "index.html"
-  posts_collision = any(out_html == posts_out_path for _, out_html, _, _ in all_files)
+  posts_collision = any(out_html == posts_out_path for _, out_html, _, _, _ in all_files)
   has_posts_listing = bool(dated_pages) and not posts_collision
   if has_posts_listing:
     expected_html.add(posts_out_path)
@@ -189,7 +191,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   # so the nav stays consistent.
   nav_sig = compute_nav_signature(nav_pages) if nav_pages else ""
 
-  for md_path, out_html, _title, layout in all_files:
+  for md_path, out_html, _title, layout, _si in all_files:
     try:
       rel = md_path.relative_to(root)
     except ValueError:
@@ -290,7 +292,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   # ── Generate sitemap.xml ──────────────────────────────────────────────
   if base_url:
     sitemap_pages = []
-    for _, out_html, _, _ in all_files:
+    for _, out_html, _, _, _ in all_files:
       try:
         mtime = out_html.stat().st_mtime
         lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")

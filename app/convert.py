@@ -43,7 +43,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
            posts_label: str = "Blog") -> Path:
   """Read a .md file and write the HTML output to out_path.
 
-  nav_pages is a list of (out_html_path, title, md_path, layout) tuples for
+  nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples for
   every page being generated, used to build the cross-page navigation bar.
   template is a string.Template loaded from the active theme; defaults to
   the built-in default theme when not supplied.
