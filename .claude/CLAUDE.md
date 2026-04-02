@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. `hanma.py` is a thin launcher (~25 lines); all logic lives in `app/` (15 modules); the HTML/CSS/JS template lives in `themes/default/template.html`.
+`hanma.py` is a minimal static site generator that converts Markdown files to self-contained HTML pages. `hanma.py` is a thin launcher (~25 lines); all logic lives in `app/` (16 modules); the HTML/CSS/JS template lives in `themes/default/template.html`.
 
-**Version:** 0.1.91 (accessible as `app.__version__` and via `--version` flag)
+**Version:** 0.1.92 (accessible as `app.__version__` and via `--version` flag)
 
 **Dependencies** (install in `.venv/`): `markdown`, `pygments`, `pyyaml`, `watchdog`
 
@@ -78,14 +78,15 @@ CI runs automatically via Gitea Actions (`.gitea/workflows/ci.yml`) on every pus
 hanma.py              ← thin CLI launcher (~25 lines); adds app/ to sys.path and calls main()
 app/           ← all logic; importable as a package
   __init__.py         ← re-exports every public symbol; defines _THEMES_DIR and load_theme()
-  cli.py              ← main(), _serve(), argparse, __version__
+  _version.py         ← single source of truth for __version__
+  cli.py              ← main(), _serve(), argparse
   build.py            ← _run_build() orchestration
   convert.py          ← convert_md_to_html()
-  parsing.py          ← parse_front_matter(), extract_title(), extract_description(), collect_page_info()
+  parsing.py          ← parse_front_matter(), extract_title(), extract_description(), collect_page_info(), parse_date_field()
   nav.py              ← build_nav_html()
   pages.py            ← build_tag_index_html(), build_posts_listing_html(), _make_generated_page()
   sidecar.py          ← build_sitemap_xml(), build_search_json()
-  files.py            ← find_markdown_files(), copy_static_assets(), clean_stale_html()
+  files.py            ← find_markdown_files(), copy_static_assets(), clean_stale_html(), POSTS_DIR_NAME
   theme.py            ← _load_theme_impl(), copy_theme_assets()
   config.py           ← load_site_config()
   highlight.py        ← _build_highlight_css(), HIGHLIGHT_CSS
@@ -98,8 +99,11 @@ tests/                ← pytest suite (imports app as "hanma")
 ```
 
 **Notes for contributors:**
+- `__version__` is defined solely in `app/_version.py` and imported everywhere else. When bumping the version, only `app/_version.py` needs to change.
 - `app/_THEMES_DIR` is defined in `__init__.py` (not `theme.py`) so tests can monkey-patch it and `load_theme()` picks up the change at call time.
 - `app/convert.py` and `app/cli.py` each define their own local `_THEMES_DIR` for the internal `_load_theme_impl()` fallback — this does not participate in monkey-patching.
+- `POSTS_DIR_NAME` is defined in `app/files.py` and imported by `build.py` and `nav.py`. Do not redefine it locally in other modules.
+- `parse_date_field()` in `app/parsing.py` is the single implementation for converting front matter `date:` values to display strings. Use it anywhere date formatting is needed.
 - All `Path(__file__).parent.parent` references in `app/` resolve to the project root (one level up from `app/`), equivalent to the old `Path(__file__).parent` in the monolith.
 
 ## Architecture
