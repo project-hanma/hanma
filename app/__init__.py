@@ -9,7 +9,7 @@ Re-exports every public symbol so that tests can do:
 from pathlib import Path
 
 # ── Version ───────────────────────────────────────────────────────────────────
-__version__ = "0.1.91"
+from app._version import __version__
 
 # ── _THEMES_DIR: defined here so tests can monkey-patch app._THEMES_DIR
 # and load_theme() (defined below) picks it up at call time. ──────────────────
@@ -20,10 +20,11 @@ from app.config import load_site_config
 from app.highlight import HIGHLIGHT_CSS, _build_highlight_css
 from app.parsing import (
   parse_front_matter, extract_title, extract_description, collect_page_info,
+  parse_date_field,
 )
 from app.nav import build_nav_html
 from app.theme import _load_theme_impl, copy_theme_assets
-from app.files import find_markdown_files, copy_static_assets, clean_stale_html
+from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.pages import (
   _normalize_tag, _search_json_url,
   _make_generated_page, build_tag_index_html, build_posts_listing_html,
