@@ -394,4 +394,4 @@ Visual styling is fully delegated to the active theme. See the **Themes** sectio
 
 ## License
 
-MIT
+GPLv2 — see [LICENSE](LICENSE) for the full text.
