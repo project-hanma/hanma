@@ -125,8 +125,9 @@ def build_nav_html(current_out_html: Path,
       idx = group["index"]
       children = group["children"]
       if idx is not None:
-        # Directory with an index: top-level item = index, dropdown = children
-        idx_html, idx_title, _, _ = idx
+        # Directory with an index: top-level item links to index using folder name, dropdown = children
+        idx_html, _, _, _ = idx
+        idx_title = dir_key.replace("-", " ").replace("_", " ").title()
         dropdown = []
         for child_html, child_title, _, _ in children:
           safe_u = html.escape(_rel_url(child_html), quote=True)
