@@ -19,10 +19,10 @@ from pathlib import Path
 
 try:
   import yaml
-except ImportError:
-  print("Error: 'pyyaml' package not found.")
-  print("Install it with:  pip install pyyaml")
-  sys.exit(1)
+except ImportError as exc:
+  raise RuntimeError(
+    "Required package 'pyyaml' not found. Install it with:  pip install pyyaml"
+  ) from exc
 
 
 def load_site_config(config_path: Path) -> dict:

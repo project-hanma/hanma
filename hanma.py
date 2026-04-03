@@ -35,7 +35,11 @@ _here = Path(__file__).parent
 if str(_here) not in sys.path:
   sys.path.insert(0, str(_here))
 
-from app.cli import main
+try:
+  from app.cli import main
+except RuntimeError as _exc:
+  print(f"Error: {_exc}")
+  sys.exit(1)
 
 if __name__ == "__main__":
   main()

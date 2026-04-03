@@ -1578,3 +1578,59 @@ class TestSaveBuildManifest:
     hanma.save_build_manifest(bad_path, {"key": 1.0})
     captured = capsys.readouterr()
     assert "warning" in captured.err.lower()
+
+
+# ===========================================================================
+# 33. clean_stale_html OSError branch
+# ===========================================================================
+
+
+class TestCleanStaleHtmlOSError:
+  def test_oserror_on_unlink_prints_warning(self, tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    stale = output_dir / "stale.html"
+    stale.write_text("<html/>")
+
+    def _bad_unlink(self):
+      raise OSError("permission denied")
+
+    monkeypatch.setattr("pathlib.Path.unlink", _bad_unlink)
+    removed = hanma.clean_stale_html(output_dir, expected_html=set())
+    assert removed == []
+    captured = capsys.readouterr()
+    assert "warning" in captured.err.lower()
+
+
+# ===========================================================================
+# 34. _sitemap_link depth-aware URL
+# ===========================================================================
+
+
+class TestSitemapLink:
+  def test_no_base_url_returns_empty(self, tmp_path):
+    out = tmp_path / "output" / "tags" / "foo.html"
+    assert hanma._sitemap_link(out, tmp_path / "output", "") == ""
+
+  def test_root_level_page(self, tmp_path):
+    output_root = tmp_path / "output"
+    out = output_root / "index.html"
+    result = hanma._sitemap_link(out, output_root, "https://example.com")
+    assert result == '<a href="sitemap.xml">Sitemap</a>'
+
+  def test_one_level_deep(self, tmp_path):
+    output_root = tmp_path / "output"
+    out = output_root / "tags" / "foo.html"
+    result = hanma._sitemap_link(out, output_root, "https://example.com")
+    assert result == '<a href="../sitemap.xml">Sitemap</a>'
+
+  def test_two_levels_deep(self, tmp_path):
+    output_root = tmp_path / "output"
+    out = output_root / "tags" / "year" / "foo.html"
+    result = hanma._sitemap_link(out, output_root, "https://example.com")
+    assert result == '<a href="../../sitemap.xml">Sitemap</a>'
+
+  def test_no_output_root(self, tmp_path):
+    out = tmp_path / "foo.html"
+    result = hanma._sitemap_link(out, None, "https://example.com")
+    assert result == '<a href="sitemap.xml">Sitemap</a>'
