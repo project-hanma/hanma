@@ -289,19 +289,24 @@ Examples:
     return
 
   if effective_watch:
+    watch_kwargs = {
+      "base_url": base_url,
+      "posts_label": posts_label,
+      "config_path": config_path,
+      "incremental": effective_incremental,
+      "manifest_path": manifest_path,
+    }
     if effective_serve:
       watch_thread = threading.Thread(
         target=watch_and_rebuild,
         args=(root, output_dir, site_name, theme_template, theme_dir),
-        kwargs={"base_url": base_url, "posts_label": posts_label,
-            "config_path": config_path},
+        kwargs=watch_kwargs,
         daemon=True,
       )
       watch_thread.start()
     else:
       watch_and_rebuild(root, output_dir, site_name, theme_template, theme_dir,
-               base_url=base_url, posts_label=posts_label,
-               config_path=config_path)
+               **watch_kwargs)
       return
 
   if effective_serve:

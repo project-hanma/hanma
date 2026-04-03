@@ -74,7 +74,9 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
          template: string.Template, theme_dir: Path,
          base_url: str = "", poll_interval: float = 1.0,
          posts_label: str = "Blog",
-         config_path: Optional[Path] = None) -> None:
+         config_path: Optional[Path] = None,
+         incremental: bool = False,
+         manifest_path: Optional[Path] = None) -> None:
   """Fallback polling-based watch (used when watchdog is not available)."""
   print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
@@ -102,7 +104,9 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
         print(f"\n  [watch] change detected, rebuilding...")
         _run_build(root, output_dir, site_name, template, theme_dir,
              base_url=base_url, posts_label=posts_label,
-             config_path=config_path)
+             config_path=config_path,
+             incremental=incremental,
+             manifest_path=manifest_path)
       last_mtimes = current_mtimes
       files = current_files
   except KeyboardInterrupt:
@@ -114,7 +118,9 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            base_url: str = "",
            poll_interval: float = 1.0,
            posts_label: str = "Blog",
-           config_path: Optional[Path] = None) -> None:
+           config_path: Optional[Path] = None,
+           incremental: bool = False,
+           manifest_path: Optional[Path] = None) -> None:
   """Watch source files and regenerate on changes.
 
   Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
@@ -123,7 +129,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
   if not _WATCHDOG_AVAILABLE:
     _watch_polling(root, output_dir, site_name, template, theme_dir,
            base_url=base_url, poll_interval=poll_interval,
-           posts_label=posts_label, config_path=config_path)
+           posts_label=posts_label, config_path=config_path,
+           incremental=incremental, manifest_path=manifest_path)
     return
 
   def rebuild():
@@ -131,7 +138,9 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     try:
       _run_build(root, output_dir, site_name, template, theme_dir,
            base_url=base_url, posts_label=posts_label,
-           config_path=config_path)
+           config_path=config_path,
+           incremental=incremental,
+           manifest_path=manifest_path)
     except Exception as exc:
       print(f"  [watch] build error: {exc}")
 
