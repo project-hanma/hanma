@@ -17,7 +17,6 @@
 import html
 import os
 import string
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -33,19 +32,15 @@ try:
   from markdown.extensions.def_list import DefListExtension
   from markdown.extensions.abbr import AbbrExtension
   from markdown.extensions.meta import MetaExtension
-except ImportError:
-  print("Error: 'markdown' package not found.")
-  print("Install it with:  pip install markdown pygments pyyaml watchdog")
-  sys.exit(1)
+except ImportError as exc:
+  raise RuntimeError(
+    "Required package 'markdown' not found. "
+    "Install it with:  pip install markdown pygments pyyaml watchdog"
+  ) from exc
 
 from app.nav import build_nav_html
 from app.pages import _normalize_tag, _search_json_url
 from app.parsing import parse_front_matter, extract_title, extract_description, parse_date_field
-
-# Used only for the fallback when no template is passed to convert_md_to_html.
-# Does not participate in test monkey-patching of _THEMES_DIR.
-_THEMES_DIR = Path(__file__).parent.parent / "themes"
-
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
            nav_pages: Optional[list] = None,
@@ -68,8 +63,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   search_json_url template variables.
   """
   if template is None:
+    import app as _app
     from app.theme import _load_theme_impl
-    template, _ = _load_theme_impl("default", _THEMES_DIR)
+    template, _ = _load_theme_impl("default", _app._THEMES_DIR)
   md_text = md_path.read_text(encoding="utf-8")
   front, body = parse_front_matter(md_text, source_path=md_path)
 
@@ -141,7 +137,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             os.path.relpath(tag_html_path, out_path.parent), quote=True
           )
         except ValueError:
-          rel_url = f"tags/{slug}.html"
+          rel_url = html.escape(tag_html_path.as_posix(), quote=True)
         tag_items_html.append(
           f'<a class="tag" href="{rel_url}">{tag_text}</a>'
         )

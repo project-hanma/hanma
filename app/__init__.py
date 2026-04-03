@@ -39,10 +39,10 @@ from app.parsing import (
   parse_date_field,
 )
 from app.nav import build_nav_html
-from app.theme import _load_theme_impl, copy_theme_assets
+from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
 from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.pages import (
-  _normalize_tag, _search_json_url,
+  _normalize_tag, _sitemap_link, _search_json_url,
   _make_generated_page, build_tag_index_html, build_posts_listing_html,
 )
 from app.sidecar import build_sitemap_xml, build_search_json

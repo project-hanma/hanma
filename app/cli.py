@@ -26,7 +26,7 @@ from app.build import _run_build
 from app.config import load_site_config
 from app.convert import convert_md_to_html
 from app.scaffold import init_scaffold
-from app.theme import _load_theme_impl, copy_theme_assets
+from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
 from app.watch import watch_and_rebuild
 from app._version import __version__
 
@@ -245,7 +245,11 @@ Examples:
   # For a single file, rebuild only that file; set root to its parent.
   if target.is_file():
     # Single-file mode: convert directly
-    theme_template, theme_dir = _load_theme_impl(theme_name, _THEMES_DIR)
+    try:
+      theme_template, theme_dir = _load_theme_impl(theme_name, _THEMES_DIR)
+    except ThemeError as exc:
+      print(f"Error: {exc}")
+      sys.exit(1)
     out_html = output_dir / target.name.replace(target.suffix, ".html")
     if args.dry_run:
       print(f"  [dry-run] {target.name}  →  {out_html}")
@@ -260,7 +264,11 @@ Examples:
     return
 
   # ── Load theme ────────────────────────────────────────────────────────
-  theme_template, theme_dir = _load_theme_impl(theme_name, _THEMES_DIR)
+  try:
+    theme_template, theme_dir = _load_theme_impl(theme_name, _THEMES_DIR)
+  except ThemeError as exc:
+    print(f"Error: {exc}")
+    sys.exit(1)
 
   # ── Manifest path for incremental builds ─────────────────────────────
   manifest_path = output_dir / ".hanma_manifest.json" if effective_incremental else None
