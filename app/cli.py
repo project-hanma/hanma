@@ -142,7 +142,7 @@ Examples:
   )
   args = parser.parse_args()
 
-  print(f"hanma {__version__} — It builds your blog. That's mostly it.\n")
+  print(f"hanma.py {__version__} — It builds your blog. That's mostly it.\n")
 
   if args.list_themes:
     if _THEMES_DIR.is_dir():
