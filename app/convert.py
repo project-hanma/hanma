@@ -38,6 +38,12 @@ except ImportError as exc:
     "Install it with:  pip install markdown pygments pyyaml watchdog"
   ) from exc
 
+try:
+  import bleach
+  _BLEACH_AVAILABLE = True
+except ImportError:
+  _BLEACH_AVAILABLE = False
+
 from app.nav import build_nav_html
 from app.pages import _normalize_tag, _search_json_url
 from app.parsing import parse_front_matter, extract_title, extract_description, parse_date_field
@@ -50,7 +56,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
            output_root: Optional[Path] = None,
            layout: str = "page",
            posts_out: Optional[Path] = None,
-           posts_label: str = "Blog") -> Path:
+           posts_label: str = "Blog",
+           sanitize: bool = False) -> Path:
   """Read a .md file and write the HTML output to out_path.
 
   nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples for
@@ -61,6 +68,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   tag names in the tag strip become clickable links.
   base_url and output_root are used to compute sitemap_link and
   search_json_url template variables.
+  sanitize=True will clean the generated HTML using bleach if available.
   """
   if template is None:
     import app as _app
@@ -123,6 +131,27 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
   md = markdown.Markdown(extensions=extensions, output_format="html")
   content_html = md.convert(body)
+
+  if sanitize:
+    if _BLEACH_AVAILABLE:
+      # Use a permissive set of tags/attributes to avoid breaking Markdown extensions
+      # like TOC, syntax highlighting, and tables, while still stripping <script>, etc.
+      allowed_tags = [
+        'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol',
+        'strong', 'ul', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'div',
+        'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
+        'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
+      ]
+      allowed_attrs = {
+        '*': ['class', 'id'],
+        'a': ['href', 'title', 'rel'],
+        'img': ['src', 'alt', 'title', 'width', 'height'],
+      }
+      content_html = bleach.clean(content_html, tags=allowed_tags, attributes=allowed_attrs)
+    else:
+      import sys
+      print("Warning: 'sanitize' enabled but 'bleach' package not found. Skipping sanitization.",
+         file=sys.stderr)
 
   # Append tag strip to content if tags are present
   if isinstance(fm_tags, list) and fm_tags:

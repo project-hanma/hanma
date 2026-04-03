@@ -40,7 +40,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
        manifest_path: Optional[Path] = None,
        dry_run: bool = False,
        posts_label: str = "Blog",
-       config_path: Optional[Path] = None) -> tuple[int, int, int]:
+       config_path: Optional[Path] = None,
+       sanitize: bool = False) -> tuple[int, int, int]:
   """Run a full site build. Returns (ok, errors, skipped)."""
 
   files = find_markdown_files(root)
@@ -246,6 +247,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         base_url=base_url, output_root=output_dir,
         layout=layout,
         posts_out=nav_posts_out, posts_label=posts_label,
+        sanitize=sanitize,
       )
       print(f"  ✓  {rel}  →  {out}")
       ok += 1
