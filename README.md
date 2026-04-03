@@ -197,7 +197,7 @@ project/
 | `--config FILE` | `conf/hanma.yml` | Path to a config file; overrides default lookup order |
 | `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--dry-run` | — | List matched files without writing HTML |
-| `--incremental` | — | Only rebuild pages whose source has changed since the last build |
+| `--incremental` | — | Only rebuild pages whose source, theme template, or config file has changed since the last build |
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
 | `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
 | `--watch` | — | Watch source files and regenerate on changes after initial build |
