@@ -149,14 +149,14 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                posts_out: Optional[Path] = None) -> Path:
   """Generate posts.html listing all layout='post' pages, newest first.
 
-  dated_pages is a list of (out_html_path, title, mtime_dt, description) tuples.
-  mtime_dt is the file's modification time; used for both sorting and display.
+  dated_pages is a list of (out_html_path, title, date_dt, description) tuples.
+  date_dt is used for both sorting and display.
   """
-  # Sort newest-first by mtime.
+  # Sort newest-first by date.
   sorted_pages = sorted(dated_pages, key=lambda t: t[2], reverse=True)
 
   items = []
-  for page_html_path, page_title, mtime_dt, description in sorted_pages:
+  for page_html_path, page_title, date_dt, description in sorted_pages:
     try:
       rel_url = html.escape(
         os.path.relpath(page_html_path, out_path.parent), quote=True
@@ -164,7 +164,14 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
     except ValueError:
       rel_url = page_html_path.as_posix()
     safe_title = html.escape(page_title)
-    date_str = html.escape(mtime_dt.strftime("%-m/%-d/%Y @ %I:%M %p"))
+
+    # Use a simpler format if it's exactly midnight (likely from YYYY-MM-DD front matter).
+    if date_dt.hour == 0 and date_dt.minute == 0 and date_dt.second == 0:
+      fmt = "%-m/%-d/%Y"
+    else:
+      fmt = "%-m/%-d/%Y @ %I:%M %p"
+
+    date_str = html.escape(date_dt.strftime(fmt))
     date_span = f' <span class="post-date">{date_str}</span>'
     desc_html = f'\n    <p class="post-desc">{html.escape(description)}</p>' if description else ""
     items.append(
