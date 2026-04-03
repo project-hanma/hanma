@@ -30,6 +30,20 @@ def _normalize_tag(tag: str) -> str:
   return re.sub(r"[^\w-]", "-", str(tag).lower()).strip("-")
 
 
+def _sitemap_link(out_path: Path, output_root: Optional[Path], base_url: str) -> str:
+  """Return an HTML anchor to sitemap.xml as seen from out_path, or '' if no base_url."""
+  if not base_url:
+    return ""
+  if output_root is None:
+    return '<a href="sitemap.xml">Sitemap</a>'
+  try:
+    depth = len(out_path.relative_to(output_root).parts) - 1
+  except ValueError:
+    depth = 0
+  rel = ("../" * depth) + "sitemap.xml"
+  return f'<a href="{rel}">Sitemap</a>'
+
+
 def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str) -> str:
   """Return the URL to search.json as seen from out_path.
 
@@ -119,7 +133,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
   return _make_generated_page(
     content_html, f'Tag: {tag}', f'Pages tagged {tag}',
     out_path, site_name, nav_pages, template,
-    sitemap_link='<a href="../sitemap.xml">Sitemap</a>' if base_url else "",
+    sitemap_link=_sitemap_link(out_path, output_root, base_url),
     search_json_url=_search_json_url(out_path, output_root, base_url),
     output_root=output_root,
     posts_out=posts_out, posts_label=posts_label,
@@ -163,15 +177,10 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
   items_html = "\n".join(items) if items else "  <li><em>No posts found.</em></li>"
   safe_label = html.escape(posts_label)
   content_html = f'<h1>{safe_label}</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
-  # Compute depth-aware sitemap link (posts/index.html is one level deep)
-  if base_url:
-    sitemap_link = '<a href="../sitemap.xml">Sitemap</a>'
-  else:
-    sitemap_link = ""
   return _make_generated_page(
     content_html, posts_label, f"A listing of all {posts_label.lower()} posts.",
     out_path, site_name, nav_pages, template,
-    sitemap_link=sitemap_link,
+    sitemap_link=_sitemap_link(out_path, output_root, base_url),
     search_json_url=_search_json_url(out_path, output_root, base_url),
     output_root=output_root,
     posts_out=posts_out, posts_label=posts_label,
