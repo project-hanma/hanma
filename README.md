@@ -329,11 +329,14 @@ alongside `hanma.py` and are fully self-contained directories:
 ```
 themes/
 └── default/          ← built-in theme
-    └── template.html ← HTML/CSS/JS skeleton
+    ├── template.html ← HTML/CSS/JS skeleton
+    └── style.css     ← layout and component styles
 ```
 
 Additional files in the theme directory (CSS, images, fonts) are copied
-to the output root automatically at generation time.
+to `output/assets/styles/` automatically at generation time. Pygments
+syntax-highlighting CSS is generated at build time and written alongside
+them as `assets/styles/pygments.css`.
 
 Select a theme with `--theme`:
 
@@ -351,7 +354,7 @@ List available themes:
 
 1. Copy `themes/default/` to `themes/mytheme/`
 2. Edit `template.html` — it uses Python's `string.Template` `$variable` syntax
-3. Add any static assets (CSS, images) alongside `template.html`
+3. Add any static assets (CSS, images) alongside `template.html` — they will be copied to `output/assets/styles/` at build time
 
 Available variables in `template.html`:
 
@@ -369,7 +372,6 @@ Available variables in `template.html`:
 | `$refresh_meta` | `<meta http-equiv="refresh">` tag (empty if `refresh` not set) |
 | `$source_file` | Source `.md` filename |
 | `$last_updated` | File modification timestamp |
-| `$HIGHLIGHT_CSS` | Pygments syntax highlighting CSS |
 | `$sitemap_link` | Link to `sitemap.xml` (empty if `--base-url` not set) |
 | `$search_json_url` | URL to `search.json` (relative or absolute) |
 

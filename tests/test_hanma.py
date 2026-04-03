@@ -700,15 +700,15 @@ class TestThemes:
     finally:
       hanma._THEMES_DIR = original_themes_dir
 
-    assert (out_dir / "custom.css").exists()
-    assert not (out_dir / "template.html").exists()
+    assert (out_dir / "assets" / "styles" / "custom.css").exists()
+    assert not (out_dir / "assets" / "styles" / "template.html").exists()
 
   def test_template_html_not_copied_as_asset(self, tmp_path):
     out_dir = tmp_path / "dist"
     out_dir.mkdir()
     theme_dir = hanma._THEMES_DIR / "default"
     hanma.copy_theme_assets(theme_dir, out_dir)
-    assert not (out_dir / "template.html").exists()
+    assert not (out_dir / "assets" / "styles" / "template.html").exists()
 
 
 # ===========================================================================

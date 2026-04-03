@@ -22,7 +22,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from app.highlight import HIGHLIGHT_CSS
 from app.nav import build_nav_html
 
 
@@ -80,7 +79,6 @@ def _make_generated_page(content_html: str, title: str, description: str,
     nav=nav_html,
     source_file="(generated)",
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
-    HIGHLIGHT_CSS=HIGHLIGHT_CSS,
     sitemap_link=sitemap_link,
     search_json_url=search_json_url,
   )

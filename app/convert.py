@@ -38,7 +38,6 @@ except ImportError:
   print("Install it with:  pip install markdown pygments pyyaml watchdog")
   sys.exit(1)
 
-from app.highlight import HIGHLIGHT_CSS
 from app.nav import build_nav_html
 from app.pages import _normalize_tag, _search_json_url
 from app.parsing import parse_front_matter, extract_title, extract_description, parse_date_field
@@ -192,7 +191,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     nav=nav_html,
     source_file=source_rel,
     last_updated=last_updated,
-    HIGHLIGHT_CSS=HIGHLIGHT_CSS,
     sitemap_link=sitemap_link,
     search_json_url=search_url,
   )
