@@ -7,17 +7,9 @@
   <meta name="description" content="$description" />
   <meta name="generator" content="hanma" />
   $author_meta$keywords_meta$refresh_meta<!-- Apply saved theme before first paint to avoid flash -->
-  <link rel="stylesheet" href="/assets/styles/style.css" />
-  <link rel="stylesheet" href="/assets/styles/pygments.css" />
-  <script>
-    (function(){
-      var t = localStorage.getItem("hanma-theme");
-      if (t) { document.documentElement.setAttribute("data-theme", t); }
-      else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.setAttribute("data-theme", "dark");
-      }
-    })();
-  </script>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/pygments.css" />
+  <script src="/assets/scripts/theme-init.js"></script>
 </head>
 <body>
 
@@ -56,119 +48,8 @@
   <p>$sitemap_link</p>
 </footer>
 
-<script>
-(function () {
-  var STORAGE_KEY = "hanma-theme";
-  var root = document.documentElement;
-  var btn  = document.getElementById("themeToggle");
-  var icon = document.getElementById("themeIcon");
-  var lbl  = document.getElementById("themeLabel");
-
-  function currentTheme() {
-    return root.getAttribute("data-theme") || "light";
-  }
-
-  function syncButton(theme) {
-    if (theme === "dark") {
-      icon.innerHTML = "&#9728;";
-      lbl.textContent = "Light";
-    } else {
-      icon.innerHTML = "&#9790;";
-      lbl.textContent = "Dark";
-    }
-  }
-
-  // Sync button label to whatever the <head> script already applied
-  syncButton(currentTheme());
-
-  btn.addEventListener("click", function () {
-    var next = currentTheme() === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    localStorage.setItem(STORAGE_KEY, next);
-    syncButton(next);
-  });
-})();
-</script>
-
-<script>
-(function () {
-  var input = document.getElementById("searchInput");
-  var drop  = document.getElementById("searchDropdown");
-  if (!input || !drop) return;
-
-  var INDEX_URL = input.getAttribute("data-search-url");
-  var _data = null;
-  var _loading = false;
-
-  function loadIndex(cb) {
-    if (_data) { cb(_data); return; }
-    if (_loading) return;
-    _loading = true;
-    var xhr = new XMLHttpRequest();
-    xhr.open("GET", INDEX_URL);
-    xhr.onload = function () {
-      try { _data = xhr.status === 200 ? JSON.parse(xhr.responseText) : []; }
-      catch (e) { _data = []; }
-      _loading = false;
-      cb(_data);
-    };
-    xhr.onerror = function () { _data = []; _loading = false; cb(_data); };
-    xhr.send();
-  }
-
-  function esc(s) {
-    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
-                    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  }
-
-  function render(results) {
-    drop.innerHTML = "";
-    if (!results.length) {
-      var li = document.createElement("li");
-      li.className = "search-no-results";
-      li.textContent = "No results.";
-      drop.appendChild(li);
-    } else {
-      var searchBase = new URL(INDEX_URL, location.href);
-      results.slice(0, 8).forEach(function (r) {
-        var li = document.createElement("li");
-        var a  = document.createElement("a");
-        a.href = new URL(r.url, searchBase).href;
-        a.innerHTML = esc(r.title) +
-          (r.description ? '<span class="search-desc">' + esc(r.description) + '</span>' : "");
-        li.appendChild(a);
-        drop.appendChild(li);
-      });
-    }
-    drop.classList.add("open");
-  }
-
-  function filter(data, q) {
-    q = q.toLowerCase();
-    return data.filter(function (r) {
-      return r.title.toLowerCase().indexOf(q) !== -1 ||
-             (r.description && r.description.toLowerCase().indexOf(q) !== -1) ||
-             (r.tags && r.tags.some(function (t) { return t.toLowerCase().indexOf(q) !== -1; }));
-    });
-  }
-
-  input.addEventListener("input", function () {
-    var q = input.value.trim();
-    if (!q) { drop.classList.remove("open"); drop.innerHTML = ""; return; }
-    loadIndex(function (data) { render(filter(data, q)); });
-  });
-
-  document.addEventListener("click", function (e) {
-    if (!input.contains(e.target) && !drop.contains(e.target)) {
-      drop.classList.remove("open");
-    }
-  });
-
-  input.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { drop.classList.remove("open"); input.value = ""; }
-  });
-})();
-</script>
+<script src="/assets/scripts/theme-toggle.js"></script>
+<script src="/assets/scripts/search.js"></script>
 
 </body>
 </html>

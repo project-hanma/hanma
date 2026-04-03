@@ -45,20 +45,32 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
   return string.Template(template_path.read_text(encoding="utf-8")), theme_dir
 
 
-_STYLES_SUBDIR = Path("assets") / "styles"
+_CSS_SUBDIR = Path("assets") / "css"
 
 
 def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
-  """Copy all non-template files from theme_dir into output_root/assets/styles/.
+  """Copy all non-template files from theme_dir into output_root/assets/.
 
-  Subdirectories are copied recursively. template.html is skipped.
-  Does nothing if the theme contains only template.html.
+  A theme subdirectory named 'assets' is merged into output_root/assets/
+  directly (preserving its internal structure), so that paths like
+  assets/css/style.css and assets/scripts/foo.js resolve correctly.
+  Loose files (not inside assets/) fall back to output_root/assets/css/.
+  template.html is always skipped.
   """
-  styles_dir = output_root / _STYLES_SUBDIR
+  css_dir = output_root / _CSS_SUBDIR
   for src in theme_dir.iterdir():
     if src.name == "template.html":
       continue
-    dest = styles_dir / src.name
+    if src.is_dir() and src.name == "assets":
+      for child in src.rglob("*"):
+        if not child.is_file():
+          continue
+        rel = child.relative_to(src)
+        dest = output_root / "assets" / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(child, dest)
+      continue
+    dest = css_dir / src.name
     if src.is_file():
       dest.parent.mkdir(parents=True, exist_ok=True)
       shutil.copy2(src, dest)
