@@ -1,0 +1,6 @@
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="40" cy="40" r="34" fill="none" stroke="#888780" stroke-width="1.2"/>
+  <text x="40" y="40" text-anchor="middle" dominant-baseline="central"
+        font-size="38" fill="#888780"
+        style="font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'MS Mincho', Georgia, serif;">半</text>
+</svg>
