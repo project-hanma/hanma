@@ -40,5 +40,5 @@ def load_site_config(config_path: Path) -> dict:
   if not isinstance(raw, dict):
     return {}
   allowed = {"name", "base_url", "output", "theme", "serve", "port", "watch", "incremental",
-       "posts_label"}
+       "posts_label", "sanitize"}
   return {k: v for k, v in raw.items() if k in allowed}

@@ -32,6 +32,7 @@ It builds your blog. That's mostly it.
 - Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by date (using front matter `date` if available, falling back to file modification time; newest first), accessible at `/posts/`
 - Client-side search — `search.json` generated and searchable inline via the default theme's header search box
 - Sitemap — `sitemap.xml` generated when `--base-url` is set
+- HTML sanitization (`--sanitize`) — optionally cleans generated HTML using `bleach` to prevent XSS from untrusted Markdown
 - Static asset passthrough — `site/static/` copied verbatim to the output directory
 - Incremental builds (`--incremental`) — only regenerates pages whose source, theme template, or config file has changed
 - `--init` scaffold — creates a sample `site/` directory with starter content
@@ -40,6 +41,12 @@ It builds your blog. That's mostly it.
 ## Requirements
 
 Python 3.10+ and the following packages:
+
+- `markdown`: Markdown to HTML conversion
+- `pygments`: Syntax highlighting
+- `pyyaml`: Front matter and config parsing
+- `watchdog`: File system watching (optional, but recommended)
+- `bleach`: HTML sanitization (optional, used with `--sanitize`)
 
 ### Setting up a virtual environment
 
@@ -55,7 +62,7 @@ source .venv/bin/activate        # Linux / macOS
 .venv\Scripts\activate           # Windows
 
 # Install dependencies
-pip install markdown pygments pymdown-extensions pyyaml watchdog
+pip install markdown pygments pyyaml watchdog bleach
 
 # When you are done
 deactivate
@@ -158,6 +165,9 @@ project/
 # Only rebuild pages that changed since last build
 ./hanma.py --incremental
 
+# Sanitize generated HTML using bleach (optional)
+./hanma.py --sanitize
+
 # Generate sitemap.xml and absolute URLs in search.json
 ./hanma.py --base-url https://example.com
 
@@ -198,6 +208,7 @@ project/
 | `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--dry-run` | — | List matched files without writing HTML |
 | `--incremental` | — | Only rebuild pages whose source, theme template, or config file has changed since the last build |
+| `--sanitize` | — | Sanitize the generated HTML using `bleach` to prevent XSS (requires `bleach` package) |
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
 | `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
 | `--watch` | — | Watch source files and regenerate on changes after initial build |
@@ -219,6 +230,7 @@ serve: false            # start HTTP server after build (true/false)
 port: 8000              # HTTP server port
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
+sanitize: false         # sanitize generated HTML using bleach (true/false)
 posts_label: Blog       # label for the posts listing link in the nav (default: "Blog")
 ```
 

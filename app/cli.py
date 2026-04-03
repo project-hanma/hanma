@@ -125,6 +125,11 @@ Examples:
     help="Only regenerate pages whose source file has changed since last build",
   )
   parser.add_argument(
+    "--sanitize",
+    action="store_true",
+    help="Sanitize the generated HTML using 'bleach' if available",
+  )
+  parser.add_argument(
     "--config",
     default=None,
     metavar="FILE",
@@ -216,6 +221,7 @@ Examples:
   cfg_port        = site_config.get("port",        8000)
   cfg_watch       = site_config.get("watch",       False)
   cfg_incremental = site_config.get("incremental", False)
+  cfg_sanitize    = site_config.get("sanitize",    False)
 
   # Resolve effective serve port: explicit --serve N > --port N > config port > 8000
   if args.serve is not None:
@@ -230,6 +236,7 @@ Examples:
 
   effective_watch       = args.watch       or cfg_watch
   effective_incremental = args.incremental or cfg_incremental
+  effective_sanitize    = args.sanitize    or cfg_sanitize
 
   # ── Resolve output directory ───────────────────────────────────────────
   if output_arg:
@@ -256,7 +263,7 @@ Examples:
       return
     out_html.parent.mkdir(parents=True, exist_ok=True)
     copy_theme_assets(theme_dir, output_dir)
-    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template)
+    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template, sanitize=effective_sanitize)
     print(f"  ✓  {target.name}  →  {out_html}")
     print(f"\nDone.  1 converted, 0 errors.")
     if effective_serve:
@@ -283,6 +290,7 @@ Examples:
     dry_run=args.dry_run,
     posts_label=posts_label,
     config_path=config_path,
+    sanitize=effective_sanitize,
   )
 
   if args.dry_run:
@@ -295,6 +303,7 @@ Examples:
       "config_path": config_path,
       "incremental": effective_incremental,
       "manifest_path": manifest_path,
+      "sanitize": effective_sanitize,
     }
     if effective_serve:
       watch_thread = threading.Thread(
