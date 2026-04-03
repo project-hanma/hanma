@@ -93,16 +93,25 @@ def parse_date_field(fm_date_raw) -> str:
   string if the value is absent or malformed. Malformed values are silently
   ignored — callers should warn the user separately if needed.
   """
+  d = extract_date_dt(fm_date_raw)
+  return d.strftime("%B %d, %Y") if d else ""
+
+
+def extract_date_dt(fm_date_raw) -> datetime | None:
+  """Extract a datetime object from a front matter date field.
+
+  Accepts either a YYYY-MM-DD string or a datetime.date object (as parsed by
+  PyYAML). Returns a datetime object or None if the value is absent or malformed.
+  """
   if fm_date_raw is None:
-    return ""
+    return None
   try:
     if isinstance(fm_date_raw, str):
-      d = datetime.strptime(fm_date_raw, "%Y-%m-%d")
-    else:  # PyYAML parses YYYY-MM-DD as datetime.date
-      d = datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
-    return d.strftime("%B %d, %Y")
-  except (ValueError, AttributeError):
-    return ""
+      return datetime.strptime(fm_date_raw, "%Y-%m-%d")
+    # PyYAML parses YYYY-MM-DD as datetime.date
+    return datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day)
+  except (ValueError, AttributeError, TypeError):
+    return None
 
 
 def collect_page_info(md_path: Path) -> tuple:

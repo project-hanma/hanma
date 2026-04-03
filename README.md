@@ -29,7 +29,7 @@ It builds your blog. That's mostly it.
 - Theme system — swap the entire HTML/CSS/JS layout with `--theme NAME`; themes are self-contained directories
 - Site config file (`hanma.yml`) — project-level defaults for name, output, theme, base URL, and more
 - Tag index pages — `tags/<slug>.html` generated automatically from front matter tags
-- Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by file modification time (newest first), accessible at `/posts/`
+- Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by date (using front matter `date` if available, falling back to file modification time; newest first), accessible at `/posts/`
 - Client-side search — `search.json` generated and searchable inline via the default theme's header search box
 - Sitemap — `sitemap.xml` generated when `--base-url` is set
 - Static asset passthrough — `site/static/` copied verbatim to the output directory
@@ -274,7 +274,7 @@ All fields are optional. When present they take effect as follows:
 | `title` | string | Overrides the auto-extracted H1 heading; prepended with the site name in the browser title |
 | `description` | string | Overrides the auto-extracted first paragraph |
 | `author` | string | Shown in the page footer; added as `<meta name="author">` |
-| `date` | YYYY-MM-DD | Shown in the page footer alongside the author (has no effect on post listing order or display — posts always sort and display by file modification time) |
+| `date` | YYYY-MM-DD | Shown in the page footer alongside the author; primary sorting and display key for the posts listing (falls back to file modification time if missing) |
 | `layout` | string | `page` or `post` — overrides directory-based default (`posts/` files default to `post`) |
 | `tags` | list | Rendered as a tag strip below the content; generates `tags/<slug>.html` index pages; added as `<meta name="keywords">` |
 | `draft` | bool | If `true`, the page is silently skipped during generation |
@@ -288,7 +288,7 @@ Several pages are generated automatically alongside converted Markdown:
 | Page | Generated when |
 |---|---|
 | `tags/<slug>.html` | Any source page has a `tags` front matter field |
-| `posts/index.html` | Any source page has `layout: post` (files in `posts/` default to this; skipped if `posts/index.md` exists); sorted by file mtime newest-first; dates displayed as `M/D/YYYY @ HH:MM AM/PM`; served at `/posts/` URL |
+| `posts/index.html` | Any source page has `layout: post` (files in `posts/` default to this; skipped if `posts/index.md` exists); sorted by date (newest-first); dates displayed as `M/D/YYYY` (for front matter dates) or `M/D/YYYY @ HH:MM AM/PM` (for fallback mtimes); served at `/posts/` URL |
 | `sitemap.xml` | `--base-url` is set |
 | `search.json` | Always — used by the default theme's inline search box |
 
