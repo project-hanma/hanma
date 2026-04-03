@@ -29,5 +29,8 @@ theme: default
 # Only regenerate pages whose source file has changed since the last build.
 # incremental: false
 
+# Sanitize the generated HTML using 'bleach' if available.
+# sanitize: false
+
 # Label for the posts listing link in the navigation bar.
 # posts_label: Blog

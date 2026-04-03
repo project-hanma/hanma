@@ -76,7 +76,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
          posts_label: str = "Blog",
          config_path: Optional[Path] = None,
          incremental: bool = False,
-         manifest_path: Optional[Path] = None) -> None:
+         manifest_path: Optional[Path] = None,
+         sanitize: bool = False) -> None:
   """Fallback polling-based watch (used when watchdog is not available)."""
   print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
@@ -106,7 +107,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
              base_url=base_url, posts_label=posts_label,
              config_path=config_path,
              incremental=incremental,
-             manifest_path=manifest_path)
+             manifest_path=manifest_path,
+             sanitize=sanitize)
       last_mtimes = current_mtimes
       files = current_files
   except KeyboardInterrupt:
@@ -120,7 +122,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            posts_label: str = "Blog",
            config_path: Optional[Path] = None,
            incremental: bool = False,
-           manifest_path: Optional[Path] = None) -> None:
+           manifest_path: Optional[Path] = None,
+           sanitize: bool = False) -> None:
   """Watch source files and regenerate on changes.
 
   Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
@@ -130,7 +133,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     _watch_polling(root, output_dir, site_name, template, theme_dir,
            base_url=base_url, poll_interval=poll_interval,
            posts_label=posts_label, config_path=config_path,
-           incremental=incremental, manifest_path=manifest_path)
+           incremental=incremental, manifest_path=manifest_path,
+           sanitize=sanitize)
     return
 
   def rebuild():
@@ -140,7 +144,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            base_url=base_url, posts_label=posts_label,
            config_path=config_path,
            incremental=incremental,
-           manifest_path=manifest_path)
+           manifest_path=manifest_path,
+           sanitize=sanitize)
     except Exception as exc:
       print(f"  [watch] build error: {exc}")
 
