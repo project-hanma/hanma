@@ -28,7 +28,7 @@ from app.manifest import (
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY, _MANIFEST_NAV_KEY,
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
-from app.parsing import collect_page_info, parse_date_field
+from app.parsing import collect_page_info, parse_date_field, extract_date_dt
 from app.sidecar import build_sitemap_xml, build_search_json
 from app.highlight import HIGHLIGHT_CSS
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
@@ -106,14 +106,16 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
 
     # Collect pages for posts listing: all layout='post' pages go here.
-    # dated_pages entries: (out_html, title, mtime_dt, description)
-    # mtime_dt is the file's modification time, used for both sorting and display.
+    # dated_pages entries: (out_html, title, date_dt, description)
+    # date_dt is the front matter date if present, otherwise file mtime.
     if layout == "post":
-      try:
-        mtime_dt = datetime.fromtimestamp(md_path.stat().st_mtime)
-      except OSError:
-        mtime_dt = datetime.min
-      dated_pages.append((out_html, title, mtime_dt, description))
+      date_dt = extract_date_dt(front.get("date"))
+      if date_dt is None:
+        try:
+          date_dt = datetime.fromtimestamp(md_path.stat().st_mtime)
+        except OSError:
+          date_dt = datetime.min
+      dated_pages.append((out_html, title, date_dt, description))
 
     # Collect search entry
     try:
