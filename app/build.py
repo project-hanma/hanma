@@ -31,7 +31,7 @@ from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_
 from app.parsing import collect_page_info, parse_date_field
 from app.sidecar import build_sitemap_xml, build_search_json
 from app.highlight import HIGHLIGHT_CSS
-from app.theme import copy_theme_assets, _load_theme_impl, _STYLES_SUBDIR
+from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
 
 
 def _run_build(root: Path, output_dir: Path, site_name: str,
@@ -183,7 +183,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   if not dry_run:
     output_dir.mkdir(parents=True, exist_ok=True)
     copy_theme_assets(theme_dir, output_dir)
-    pygments_path = output_dir / _STYLES_SUBDIR / "pygments.css"
+    pygments_path = output_dir / _CSS_SUBDIR / "pygments.css"
     pygments_path.parent.mkdir(parents=True, exist_ok=True)
     pygments_path.write_text(HIGHLIGHT_CSS, encoding="utf-8")
 

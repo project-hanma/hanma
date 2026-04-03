@@ -328,15 +328,20 @@ alongside `hanma.py` and are fully self-contained directories:
 
 ```
 themes/
-└── default/          ← built-in theme
-    ├── template.html ← HTML/CSS/JS skeleton
-    └── style.css     ← layout and component styles
+└── default/               ← built-in theme
+    ├── template.html      ← HTML skeleton
+    └── assets/
+        ├── css/
+        │   └── style.css  ← layout and component styles
+        └── scripts/
+            ├── theme-init.js    ← applies saved theme before first paint
+            ├── theme-toggle.js  ← dark/light toggle button logic
+            └── search.js        ← inline search dropdown
 ```
 
-Additional files in the theme directory (CSS, images, fonts) are copied
-to `output/assets/styles/` automatically at generation time. Pygments
-syntax-highlighting CSS is generated at build time and written alongside
-them as `assets/styles/pygments.css`.
+The `assets/` subdirectory is merged into `output/assets/` at build time,
+preserving its internal structure. Pygments syntax-highlighting CSS is
+generated at build time and written to `output/assets/css/pygments.css`.
 
 Select a theme with `--theme`:
 
@@ -354,7 +359,7 @@ List available themes:
 
 1. Copy `themes/default/` to `themes/mytheme/`
 2. Edit `template.html` — it uses Python's `string.Template` `$variable` syntax
-3. Add any static assets (CSS, images) alongside `template.html` — they will be copied to `output/assets/styles/` at build time
+3. Place static assets inside an `assets/` subdirectory — they will be merged into `output/assets/` at build time (e.g. `assets/css/style.css` → `output/assets/css/style.css`)
 
 Available variables in `template.html`:
 
