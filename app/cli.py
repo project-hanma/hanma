@@ -334,22 +334,6 @@ Examples:
 def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
   """Start a local HTTP server serving serve_dir."""
 
-  display_host = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
-  index_html = serve_dir / "index.html"
-  if index_html.is_file():
-    open_url = f"http://{display_host}:{port}/index.html"
-  else:
-    # Fall back to the first HTML file found, or bare root
-    html_files = sorted(serve_dir.rglob("*.html"))
-    if html_files:
-      try:
-        rel_html = html_files[0].relative_to(serve_dir)
-      except ValueError:
-        rel_html = html_files[0]
-      open_url = f"http://{display_host}:{port}/{rel_html.as_posix()}"
-    else:
-      open_url = f"http://{display_host}:{port}/"
-
   class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
       super().__init__(*a, directory=str(serve_dir), **kw)
@@ -365,11 +349,8 @@ def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
       print(f"Error starting server: {exc}")
     sys.exit(1)
   print(f"\nServing at http://{host}:{port}/")
-  print(f"Opening  {open_url}")
   print("Press Ctrl+C to stop.\n")
 
-  if host in ("127.0.0.1", "0.0.0.0"):
-    threading.Timer(0.5, lambda: webbrowser.open(open_url)).start()
   try:
     server.serve_forever()
   except KeyboardInterrupt:
