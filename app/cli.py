@@ -219,6 +219,7 @@ Examples:
   # --serve is a nargs="?" int (None = not passed, 8000 = passed without value)
   cfg_serve       = site_config.get("serve",       False)
   cfg_port        = site_config.get("port",        8000)
+  cfg_host        = site_config.get("host",        "127.0.0.1")
   cfg_watch       = site_config.get("watch",       False)
   cfg_incremental = site_config.get("incremental", False)
   cfg_sanitize    = site_config.get("sanitize",    False)
@@ -234,6 +235,7 @@ Examples:
     effective_serve = False
     effective_port  = args.port if args.port != 8000 else cfg_port
 
+  effective_host = args.host if args.host is not None else cfg_host
   effective_watch       = args.watch       or cfg_watch
   effective_incremental = args.incremental or cfg_incremental
   effective_sanitize    = args.sanitize    or cfg_sanitize
@@ -320,15 +322,16 @@ Examples:
 
   if effective_serve:
     print("\nStarting server…")
-    _serve(output_dir, effective_port)
+    _serve(output_dir, effective_port, effective_host)
 
 
-def _serve(serve_dir: Path, port: int) -> None:
+def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
   """Start a local HTTP server serving serve_dir."""
 
+  display_host = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
   index_html = serve_dir / "index.html"
   if index_html.is_file():
-    open_url = f"http://localhost:{port}/index.html"
+    open_url = f"http://{display_host}:{port}/index.html"
   else:
     # Fall back to the first HTML file found, or bare root
     html_files = sorted(serve_dir.rglob("*.html"))
@@ -337,9 +340,9 @@ def _serve(serve_dir: Path, port: int) -> None:
         rel_html = html_files[0].relative_to(serve_dir)
       except ValueError:
         rel_html = html_files[0]
-      open_url = f"http://localhost:{port}/{rel_html.as_posix()}"
+      open_url = f"http://{display_host}:{port}/{rel_html.as_posix()}"
     else:
-      open_url = f"http://localhost:{port}/"
+      open_url = f"http://{display_host}:{port}/"
 
   class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
@@ -348,19 +351,21 @@ def _serve(serve_dir: Path, port: int) -> None:
       pass
 
   try:
-    server = HTTPServer(("127.0.0.1", port), QuietHandler)
+    server = HTTPServer((host, port), QuietHandler)
   except OSError as exc:
     if exc.errno == 98 or "already in use" in str(exc).lower():
       print(f"Error: port {port} is already in use. Try --port <other>")
     else:
       print(f"Error starting server: {exc}")
     sys.exit(1)
-  print(f"\nServing at http://localhost:{port}/")
+  print(f"\nServing at http://{host}:{port}/")
   print(f"Opening  {open_url}")
   print("Press Ctrl+C to stop.\n")
 
-  threading.Timer(0.5, lambda: webbrowser.open(open_url)).start()
+  if host in ("127.0.0.1", "0.0.0.0"):
+    threading.Timer(0.5, lambda: webbrowser.open(open_url)).start()
   try:
     server.serve_forever()
   except KeyboardInterrupt:
     print("\nServer stopped.")
+nServer stopped.")
