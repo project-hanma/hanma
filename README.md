@@ -211,6 +211,7 @@ project/
 | `--sanitize` | — | Sanitize the generated HTML using `bleach` to prevent XSS (requires `bleach` package) |
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
 | `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
+| `--host ADDR` | `127.0.0.1` | Bind address for the local HTTP server |
 | `--watch` | — | Watch source files and regenerate on changes after initial build |
 | `--init` | — | Scaffold a new `site/` directory with sample content |
 | `--force` | — | Used with `--init`; wipes `site/` before scaffolding |
@@ -228,6 +229,7 @@ output: dist/           # output directory
 theme: default          # theme name
 serve: false            # start HTTP server after build (true/false)
 port: 8000              # HTTP server port
+host: 127.0.0.1         # HTTP server bind address
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
 sanitize: false         # sanitize generated HTML using bleach (true/false)

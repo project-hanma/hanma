@@ -23,6 +23,9 @@ theme: default
 # Port for the local HTTP server (only used when serve is true).
 # port: 8000
 
+# Address the HTTP server binds to (127.0.0.1 = loopback only, 0.0.0.0 = all interfaces).
+# host: 127.0.0.1
+
 # Watch source files and regenerate on changes after the initial build.
 # watch: false
 
