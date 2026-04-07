@@ -4,3 +4,6 @@ PyYAML==6.0.3
 watchdog==6.0.0
 pytest==9.0.2
 bleach==6.2.0
+pylint==4.0.5
+mypy==1.20.0
+mcp-tools-py==0.1.6
