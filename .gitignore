@@ -11,3 +11,4 @@ site/*
 site_bak/
 .prompt.md
 planning/PLAN-*
+logs
