@@ -355,6 +355,52 @@ class TestCLIOutput:
     run(str(src_dir), "--output", str(out_dir))
     assert out_dir.is_dir()
 
+  def test_cleanup_stale_post(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with a post
+    write(src_dir / "posts" / "post1.md", "# Post 1")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "index.html").exists()
+    # Remove the post and rebuild
+    (src_dir / "posts" / "post1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    # The stale post should be removed
+    assert not (out_dir / "posts" / "post1.html").exists()
+    # The posts index should also be removed if no posts remain
+    assert not (out_dir / "posts" / "index.html").exists()
+
+  def test_cleanup_partial_post_cleanup(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with two posts
+    write(src_dir / "posts" / "post1.md", "# Post 1")
+    write(src_dir / "posts" / "post2.md", "# Post 2")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "post2.html").exists()
+    # Remove one post and rebuild
+    (src_dir / "posts" / "post1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    # post1 should be gone, post2 should remain
+    assert not (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "post2.html").exists()
+    # posts index should remain
+    assert (out_dir / "posts" / "index.html").exists()
+
+  def test_cleanup_stale_page(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with a page
+    write(src_dir / "page1.md", "# Page 1")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "page1.html").exists()
+    # Remove the page and rebuild
+    (src_dir / "page1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    assert not (out_dir / "page1.html").exists()
+
 
 # ===========================================================================
 # 8. CLI — --dry-run
