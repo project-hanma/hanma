@@ -1366,7 +1366,7 @@ class TestWatchdogWatch:
 
   @watchdog_available
   def test_hanma_event_handler_relevance(self, tmp_path):
-    handler = hanma._HanmaEventHandler(lambda: None, tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
     assert handler._is_relevant("file.md") is True
     assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
     assert handler._is_relevant("file.yaml") is True
@@ -1377,7 +1377,7 @@ class TestWatchdogWatch:
   def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
     from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
     triggered = []
-    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
     handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
     handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
     assert triggered == [], "open/close events must not trigger rebuild"

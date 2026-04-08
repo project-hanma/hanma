@@ -36,18 +36,36 @@ class _HanmaEventHandler(_WatchdogHandler):
   """Watchdog event handler: triggers a debounced rebuild on any relevant change."""
 
   _RELEVANT_SUFFIXES = {".md", ".markdown", ".yaml", ".css", ".js"}
+  _TRIGGER_TYPES = {"created", "deleted", "modified", "moved"}
 
-  def __init__(self, rebuild_fn, theme_dir: Path, output_dir: Optional[Path] = None) -> None:
+  def __init__(self, rebuild_fn, source_root: Path, theme_dir: Path, output_dir: Optional[Path] = None) -> None:
     super().__init__()
     self._rebuild = rebuild_fn
-    self._theme_dir = theme_dir
-    self._output_dir = output_dir
+    self._source_root = source_root.resolve()
+    self._theme_dir = theme_dir.resolve()
+    self._output_dir = output_dir.resolve() if output_dir else None
     self._lock = threading.Lock()
     self._debounce_timer: Optional[threading.Timer] = None
 
+  def _is_hidden(self, path: Path) -> bool:
+    """Check if the path or any of its parents (relative to roots) is hidden."""
+    try:
+      p = path.resolve()
+      if p.is_relative_to(self._source_root):
+        rel = p.relative_to(self._source_root)
+        return any(part.startswith(".") for part in rel.parts)
+      if p.is_relative_to(self._theme_dir):
+        rel = p.relative_to(self._theme_dir)
+        return any(part.startswith(".") for part in rel.parts)
+    except (ValueError, OSError):
+      pass
+    return False
+
   def _is_relevant(self, path: str) -> bool:
     p = Path(path)
-    if self._output_dir and p.is_relative_to(self._output_dir):
+    if self._output_dir and p.resolve().is_relative_to(self._output_dir):
+      return False
+    if self._is_hidden(p):
       return False
     return p.suffix.lower() in self._RELEVANT_SUFFIXES
 
@@ -58,16 +76,39 @@ class _HanmaEventHandler(_WatchdogHandler):
       self._debounce_timer = threading.Timer(0.3, self._rebuild)
       self._debounce_timer.start()
 
-  _TRIGGER_TYPES = {"created", "deleted", "modified", "moved"}
-
   def on_any_event(self, event) -> None:
-    if getattr(event, "is_directory", False):
-      return
     if getattr(event, "event_type", None) not in self._TRIGGER_TYPES:
       return
+
     src = getattr(event, "src_path", "")
+    
+    # Always ignore output directory
+    try:
+      if self._output_dir and Path(src).resolve().is_relative_to(self._output_dir):
+        return
+    except (ValueError, OSError):
+      pass
+
+    # For directories: trigger on creation, deletion, or move
+    if getattr(event, "is_directory", False):
+      if event.event_type in {"created", "deleted", "moved"}:
+        if not self._is_hidden(Path(src)):
+          self._schedule_rebuild()
+          return
+        # If it's a move, check destination too
+        if event.event_type == "moved":
+          dest = getattr(event, "dest_path", "")
+          if dest and not self._is_hidden(Path(dest)):
+            self._schedule_rebuild()
+      return
+
+    # For files
     if self._is_relevant(src):
       self._schedule_rebuild()
+    elif event.event_type == "moved":
+      dest = getattr(event, "dest_path", "")
+      if dest and self._is_relevant(dest):
+        self._schedule_rebuild()
 
 
 def _watch_polling(root: Path, output_dir: Path, site_name: str,
@@ -149,7 +190,7 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     except Exception as exc:
       print(f"  [watch] build error: {exc}")
 
-  handler = _HanmaEventHandler(rebuild, theme_dir, output_dir=output_dir)
+  handler = _HanmaEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
   observer = Observer()
   observer.schedule(handler, str(root), recursive=True)
   # Only schedule theme_dir separately when it lives outside the source tree.
