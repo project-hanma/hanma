@@ -26,7 +26,8 @@ _MANIFEST_CONFIG_KEY   = "_config_mtime"
 _MANIFEST_NAV_KEY      = "_nav_signature"
 
 
-def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None) -> str:
+def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None,
+             recent_posts: Optional[list] = None) -> str:
   """Return a stable hash of the current nav page set.
 
   nav_pages is a list of (out_html, title, md_path, layout) tuples.
@@ -34,10 +35,15 @@ def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None) -> 
   removal, or rename forces a full nav rebuild.
   Also includes posts_out so that adding/removing the first post triggers
   a rebuild of all pages to update the nav link.
+  Includes recent_posts titles and paths so changes in the blog dropdown
+  trigger a rebuild of the nav on all pages.
   """
   entries = [str(out_html) for out_html, *_ in nav_pages]
   if posts_out:
     entries.append(f"POSTS:{posts_out}")
+  if recent_posts:
+    for out_html, title in recent_posts:
+      entries.append(f"RECENT:{out_html}:{title}")
   
   # Stable sort for a consistent hash
   entries.sort()

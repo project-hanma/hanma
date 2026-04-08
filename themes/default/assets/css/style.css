@@ -229,6 +229,20 @@ body {
   background: var(--accent-soft);
 }
 
+/* Special styling for 'More posts...' in nav dropdown */
+.nav-more-posts-sep {
+  display: block;
+  height: 1px;
+  background: var(--border);
+  margin: 0.4rem 0.8rem;
+  opacity: 0.5;
+}
+.nav-more-posts {
+  font-weight: 600;
+  font-style: italic;
+  color: var(--accent) !important;
+}
+
 /* H4 level (third tier, if present) */
 .site-nav > ul > li > ul > li > ul {
   list-style: none;

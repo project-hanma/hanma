@@ -61,7 +61,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             posts_out: Optional[Path] = None,
             posts_label: str = "Blog",
             sanitize: bool = False,
-            timezone: Optional[str] = None) -> Path:
+            timezone: Optional[str] = None,
+            recent_posts: Optional[list] = None) -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -74,6 +75,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   base_url and output_root are used to compute sitemap_link and
   search_json_url template variables.
   sanitize=True will clean the generated HTML using bleach if available.
+  recent_posts is an optional list of (out_html, title) tuples for the nav.
   """
   if template is None:
     import app as _app
@@ -181,7 +183,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
   nav_html = build_nav_html(out_path, nav_pages or [],
                output_root=output_root,
-               posts_out=posts_out, posts_label=posts_label)
+               posts_out=posts_out, posts_label=posts_label,
+               recent_posts=recent_posts)
 
   date_str = get_localized_now(timezone).strftime("%B %d, %Y")
 

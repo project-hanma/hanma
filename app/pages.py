@@ -69,10 +69,12 @@ def _make_generated_page(content_html: str, title: str, description: str,
              search_json_url: str = "search.json",
              output_root: Optional[Path] = None,
              posts_out: Optional[Path] = None,
-             posts_label: str = "Blog") -> Path:
+             posts_label: str = "Blog",
+             recent_posts: Optional[list] = None) -> Path:
   """Render a generated (non-markdown) page using the active theme template."""
   nav_html = build_nav_html(out_path, nav_pages, output_root=output_root,
-               posts_out=posts_out, posts_label=posts_label)
+               posts_out=posts_out, posts_label=posts_label,
+               recent_posts=recent_posts)
   now = datetime.now()
   titles_match = site_name and title.lower() == site_name.lower()
   if site_name and not titles_match:
@@ -107,7 +109,8 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
              base_url: str = "",
              output_root: Optional[Path] = None,
              posts_out: Optional[Path] = None,
-             posts_label: str = "Blog") -> Path:
+             posts_label: str = "Blog",
+             recent_posts: Optional[list] = None) -> Path:
   """Generate a tag index page listing all pages tagged with tag.
 
   pages is a list of (out_html_path, title, date_str) tuples, sorted by date.
@@ -137,6 +140,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
     search_json_url=_search_json_url(out_path, output_root, base_url),
     output_root=output_root,
     posts_out=posts_out, posts_label=posts_label,
+    recent_posts=recent_posts,
   )
 
 
@@ -146,7 +150,8 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                base_url: str = "",
                output_root: Optional[Path] = None,
                posts_label: str = "Blog",
-               posts_out: Optional[Path] = None) -> Path:
+               posts_out: Optional[Path] = None,
+               recent_posts: Optional[list] = None) -> Path:
   """Generate posts.html listing all layout='post' pages, newest first.
 
   dated_pages is a list of (out_html_path, title, date_dt, description) tuples.
@@ -191,4 +196,5 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
     search_json_url=_search_json_url(out_path, output_root, base_url),
     output_root=output_root,
     posts_out=posts_out, posts_label=posts_label,
+    recent_posts=recent_posts,
   )

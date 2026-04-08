@@ -860,7 +860,7 @@ class TestNavRelativeURLs:
     assert "../index.html" in html
 
   def test_posts_dir_pages_appear_in_posts_listing(self, tmp_path):
-    # Posts in posts/ are excluded from nav and instead appear in posts/index.html listing.
+    # Posts in posts/ are excluded from the main nav but appear in the Blog dropdown.
     write(tmp_path / "index.md", "# Home\n\nWelcome.")
     write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
     out_dir = tmp_path / "out"
@@ -868,9 +868,9 @@ class TestNavRelativeURLs:
     # posts/index.html should be generated and link to hello.html
     posts_listing = (out_dir / "posts" / "index.html").read_text()
     assert "hello.html" in posts_listing
-    # posts/hello.html should NOT appear in the index.html nav
+    # posts/hello.html should appear in the index.html nav dropdown
     index_html = (out_dir / "index.html").read_text()
-    assert "posts/hello.html" not in index_html
+    assert "posts/hello.html" in index_html
 
 
 # ===========================================================================

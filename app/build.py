@@ -214,7 +214,12 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   # Compute a signature of the current nav set. If it differs from the last
   # build (pages added, removed, or renamed, or if the blog link appears/disappears),
   # every page must be regenerated so the nav stays consistent.
-  nav_sig = compute_nav_signature(nav_pages, posts_out=nav_posts_out) if (nav_pages or nav_posts_out) else ""
+  recent_posts = [
+    (out_path, title)
+    for out_path, title, date_dt, desc in sorted(dated_pages, key=lambda t: t[2], reverse=True)[:5]
+  ] if dated_pages else []
+
+  nav_sig = compute_nav_signature(nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts) if (nav_pages or nav_posts_out) else ""
 
   for md_path, out_html, _title, layout, _si in all_files:
     try:
@@ -251,6 +256,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         posts_out=nav_posts_out, posts_label=posts_label,
         sanitize=sanitize,
         timezone=timezone,
+        recent_posts=recent_posts,
       )
       print(f"  ✓  {rel}  →  {out}")
       ok += 1
@@ -297,7 +303,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     try:
       build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
               base_url=base_url, output_root=output_dir,
-              posts_out=nav_posts_out, posts_label=posts_label)
+              posts_out=nav_posts_out, posts_label=posts_label,
+              recent_posts=recent_posts)
       print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
     except Exception as exc:
       print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
@@ -308,7 +315,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     try:
       build_posts_listing_html(dated_pages, posts_out_path, site_name, nav_pages, template,
                   base_url=base_url, output_root=output_dir,
-                  posts_label=posts_label, posts_out=nav_posts_out)
+                  posts_label=posts_label, posts_out=nav_posts_out,
+                  recent_posts=recent_posts)
       print(f"  [posts] posts/index.html  ({len(dated_pages)} post(s))")
     except Exception as exc:
       print(f"  [posts] ERROR generating posts/index.html: {exc}")

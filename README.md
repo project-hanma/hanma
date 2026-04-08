@@ -16,7 +16,7 @@ It builds your blog. That's mostly it.
 - Recurses into sub-directories automatically, mirroring the source tree
 - Defaults to `./site/` as the content root (falls back to current directory)
 - `index.md` becomes the homepage — labelled **Home** and pinned first in the nav
-- Folder-based navigation bar — "Home" pinned first; pages grouped by directory with dropdown menus; posts listing link ("Blog" by default) always last; optional `sort_index` front matter controls item order
+- Folder-based navigation bar — "Home" pinned first; pages grouped by directory with dropdown menus; posts listing link ("Blog" by default) always last; optional `sort_index` front matter controls item order; the posts listing link includes a dropdown of the 5 most recent posts
 - Responsive layout — 80% width centred, collapses cleanly on mobile
 - Dark mode with OS preference detection and manual toggle (persisted via `localStorage`)
 - Syntax-highlighted fenced code blocks (Pygments — themed per light/dark mode)

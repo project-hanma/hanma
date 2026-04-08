@@ -27,7 +27,8 @@ def build_nav_html(current_out_html: Path,
          nav_pages: list[tuple],
          output_root: Optional[Path] = None,
          posts_out: Optional[Path] = None,
-         posts_label: str = "Blog") -> str:
+         posts_label: str = "Blog",
+         recent_posts: Optional[list[tuple]] = None) -> str:
   """Build the <ul> content for the sticky nav bar.
 
   Navigation is structured by folder hierarchy, not by headings:
@@ -39,6 +40,7 @@ def build_nav_html(current_out_html: Path,
   - The posts/ directory is excluded from the page-based nav.
   - If posts_out is provided, a link to it is appended as the last nav item
    (labelled posts_label, default "Blog").
+  - If recent_posts is provided, the posts link becomes a dropdown showing those posts.
   - Headings are no longer used to generate dropdown menu items.
 
   nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples.
@@ -48,6 +50,7 @@ def build_nav_html(current_out_html: Path,
   output_root is the output directory root (used to compute relative depth).
   posts_out is the Path to the generated posts.html (or None if no posts exist).
   posts_label is the display label for the posts link.
+  recent_posts is a list of (out_html_path, title) tuples for the dropdown.
   """
   if not nav_pages and posts_out is None:
     return ""  # single-file mode: no cross-page nav
@@ -197,12 +200,20 @@ def build_nav_html(current_out_html: Path,
 
   # Append posts listing link last (if posts exist)
   if posts_out is not None:
-    is_cur = posts_out == current_out_html
-    safe_url = html.escape(_rel_url(posts_out), quote=True)
-    safe_label = html.escape(posts_label)
-    css = ' class="nav-current"' if is_cur else ""
-    aria = ' aria-current="page"' if is_cur else ""
-    items.append(f'  <li{css}>\n    <a href="{safe_url}"{aria}>{safe_label}</a>\n  </li>')
+    dropdown = []
+    if recent_posts:
+      for post_html, post_title in recent_posts:
+        safe_u = html.escape(_rel_url(post_html), quote=True)
+        safe_t = html.escape(post_title)
+        is_cur = post_html == current_out_html
+        cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
+        dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
+
+      # Add "More posts..." link with a separator
+      safe_posts_url = html.escape(_rel_url(posts_out), quote=True)
+      dropdown.append((safe_posts_url, '<span class="nav-more-posts-sep"></span><span class="nav-more-posts">More posts...</span>'))
+
+    items.append(_li(posts_out, posts_label, dropdown if dropdown else None))
 
   if not items:
     return ""
