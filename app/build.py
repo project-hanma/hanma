@@ -48,13 +48,6 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
        timezone: Optional[str] = None) -> tuple[int, int, int]:
   """Run a full site build. Returns (ok, errors, skipped)."""
 
-  files = find_markdown_files(root)
-  if not files:
-    print(f"No Markdown files found under: {root}")
-    return 0, 0, 0
-
-  print(f"Found {len(files)} Markdown file(s)\n")
-
   # ── Load build manifest for incremental builds ────────────────────────
   manifest: dict = {}
   template_mtime = 0.0
@@ -71,6 +64,10 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         config_mtime = config_path.stat().st_mtime
       except OSError:
         pass
+
+  files = find_markdown_files(root)
+  if files:
+    print(f"Found {len(files)} Markdown file(s)\n")
 
   # ── Pass 1: collect titles, output paths, and derived data ───────────
   all_files: list[tuple] = []  # (md_path, out_html, title, layout, sort_index)

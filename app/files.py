@@ -35,6 +35,7 @@ def find_markdown_files(root: Path) -> list[Path]:
     p for p in root.rglob("*")
     if p.suffix.lower() in {".md", ".markdown"}
     and p.is_file()
+    and p.stat().st_size > 0
     and not has_dotpart(p)
     and p.name not in IGNORE_NAMES
   )

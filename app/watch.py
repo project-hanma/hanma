@@ -84,30 +84,39 @@ class _HanmaEventHandler(_WatchdogHandler):
     
     # Always ignore output directory
     try:
-      if self._output_dir and Path(src).resolve().is_relative_to(self._output_dir):
+      src_path = Path(src)
+      if self._output_dir and src_path.resolve().is_relative_to(self._output_dir):
         return
     except (ValueError, OSError):
       pass
 
-    # For directories: trigger on creation, deletion, or move
+    # For directories: trigger on deletion, or move
     if getattr(event, "is_directory", False):
-      if event.event_type in {"created", "deleted", "moved"}:
-        if not self._is_hidden(Path(src)):
+      if event.event_type in {"deleted", "moved"}:
+        if not self._is_hidden(src_path):
           self._schedule_rebuild()
           return
-        # If it's a move, check destination too
-        if event.event_type == "moved":
-          dest = getattr(event, "dest_path", "")
-          if dest and not self._is_hidden(Path(dest)):
-            self._schedule_rebuild()
+      # Skip "created" for directories to avoid building empty folders
       return
 
     # For files
     if self._is_relevant(src):
+      # Skip if it's a creation or modification and the file is empty
+      if event.event_type in {"created", "modified"}:
+        try:
+          if src_path.stat().st_size == 0:
+            return
+        except OSError:
+          return
       self._schedule_rebuild()
     elif event.event_type == "moved":
       dest = getattr(event, "dest_path", "")
       if dest and self._is_relevant(dest):
+        try:
+          if Path(dest).stat().st_size == 0:
+            return
+        except OSError:
+          return
         self._schedule_rebuild()
 
 

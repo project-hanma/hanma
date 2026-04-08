@@ -355,6 +355,52 @@ class TestCLIOutput:
     run(str(src_dir), "--output", str(out_dir))
     assert out_dir.is_dir()
 
+  def test_cleanup_stale_post(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with a post
+    write(src_dir / "posts" / "post1.md", "# Post 1")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "index.html").exists()
+    # Remove the post and rebuild
+    (src_dir / "posts" / "post1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    # The stale post should be removed
+    assert not (out_dir / "posts" / "post1.html").exists()
+    # The posts index should also be removed if no posts remain
+    assert not (out_dir / "posts" / "index.html").exists()
+
+  def test_cleanup_partial_post_cleanup(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with two posts
+    write(src_dir / "posts" / "post1.md", "# Post 1")
+    write(src_dir / "posts" / "post2.md", "# Post 2")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "post2.html").exists()
+    # Remove one post and rebuild
+    (src_dir / "posts" / "post1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    # post1 should be gone, post2 should remain
+    assert not (out_dir / "posts" / "post1.html").exists()
+    assert (out_dir / "posts" / "post2.html").exists()
+    # posts index should remain
+    assert (out_dir / "posts" / "index.html").exists()
+
+  def test_cleanup_stale_page(self, tmp_path):
+    src_dir = tmp_path / "src"
+    out_dir = tmp_path / "out"
+    # Initial build with a page
+    write(src_dir / "page1.md", "# Page 1")
+    run(str(src_dir), "--output", str(out_dir))
+    assert (out_dir / "page1.html").exists()
+    # Remove the page and rebuild
+    (src_dir / "page1.md").unlink()
+    run(str(src_dir), "--output", str(out_dir))
+    assert not (out_dir / "page1.html").exists()
+
 
 # ===========================================================================
 # 8. CLI — --dry-run
@@ -491,11 +537,13 @@ class TestNavigation:
 
 
 class TestEdgeCases:
-  def test_empty_file_does_not_crash(self, tmp_path):
+  def test_empty_file_is_ignored(self, tmp_path):
     write(tmp_path / "empty.md", "")
+    write(tmp_path / "normal.md", "# Normal")
     out_dir = tmp_path / "out"
     run(str(tmp_path), "--output", str(out_dir))
-    assert (out_dir / "empty.html").exists()
+    assert (out_dir / "normal.html").exists()
+    assert not (out_dir / "empty.html").exists()
 
   def test_file_with_no_headings(self, tmp_path):
     write(tmp_path / "plain.md", "Just some text with no headings.")
@@ -1377,13 +1425,43 @@ class TestWatchdogWatch:
   def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
     from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
     triggered = []
+    # Create the file so stat() succeeds and returns size > 0
+    test_file = tmp_path / "file.md"
+    test_file.write_text("# content")
+    
     handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
-    handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
-    handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
+    handler.on_any_event(FileOpenedEvent(str(test_file)))
+    handler.on_any_event(FileClosedEvent(str(test_file)))
     assert triggered == [], "open/close events must not trigger rebuild"
-    handler.on_any_event(FileModifiedEvent(str(tmp_path / "file.md")))
+    handler.on_any_event(FileModifiedEvent(str(test_file)))
     import time; time.sleep(0.4)
     assert triggered == [1], "modify event must trigger rebuild"
+
+  @watchdog_available
+  def test_hanma_event_handler_ignores_empty_file_events(self, tmp_path):
+    from watchdog.events import FileCreatedEvent, FileModifiedEvent
+    triggered = []
+    # Create an empty file
+    empty_file = tmp_path / "empty.md"
+    empty_file.write_text("")
+    
+    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+    handler.on_any_event(FileCreatedEvent(str(empty_file)))
+    handler.on_any_event(FileModifiedEvent(str(empty_file)))
+    import time; time.sleep(0.4)
+    assert triggered == [], "empty file events must not trigger rebuild"
+
+  @watchdog_available
+  def test_hanma_event_handler_ignores_dir_creation(self, tmp_path):
+    from watchdog.events import DirCreatedEvent
+    triggered = []
+    new_dir = tmp_path / "new_dir"
+    new_dir.mkdir()
+    
+    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
+    handler.on_any_event(DirCreatedEvent(str(new_dir)))
+    import time; time.sleep(0.4)
+    assert triggered == [], "directory creation must not trigger rebuild"
 
   def test_watch_and_rebuild_signature_accepts_base_url(self, tmp_path):
     import inspect
