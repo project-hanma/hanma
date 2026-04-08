@@ -37,3 +37,7 @@ theme: default
 
 # Label for the posts listing link in the navigation bar.
 # posts_label: Blog
+
+# Timezone for post dates and "last updated" timestamps (e.g., UTC, America/New_York).
+# Default: UTC
+# timezone: UTC

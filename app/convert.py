@@ -46,18 +46,23 @@ except ImportError:
 
 from app.nav import build_nav_html
 from app.pages import _normalize_tag, _search_json_url
-from app.parsing import parse_front_matter, extract_title, extract_description, parse_date_field
+from app.parsing import (
+  parse_front_matter, extract_title, extract_description,
+  parse_date_field, get_localized_now, localize_datetime
+)
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
-           nav_pages: Optional[list] = None,
-           template: Optional[string.Template] = None,
-           tags_out_dir: Optional[Path] = None,
-           base_url: str = "",
-           output_root: Optional[Path] = None,
-           layout: str = "page",
-           posts_out: Optional[Path] = None,
-           posts_label: str = "Blog",
-           sanitize: bool = False) -> Path:
+            nav_pages: Optional[list] = None,
+            template: Optional[string.Template] = None,
+            tags_out_dir: Optional[Path] = None,
+            base_url: str = "",
+            output_root: Optional[Path] = None,
+            layout: str = "page",
+            posts_out: Optional[Path] = None,
+            posts_label: str = "Blog",
+            sanitize: bool = False,
+            timezone: Optional[str] = None) -> Path:
+
   """Read a .md file and write the HTML output to out_path.
 
   nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples for
@@ -87,7 +92,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   fm_tags = front.get("tags", [])
 
   # Build a human-readable date string from front matter date field
-  fm_date_str = parse_date_field(fm_date_raw)
+  fm_date_str = parse_date_field(fm_date_raw, tz_name=timezone)
 
   # Footer attribution line (author and/or date)
   fm_author_esc = html.escape(fm_author)
@@ -178,10 +183,10 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                output_root=output_root,
                posts_out=posts_out, posts_label=posts_label)
 
-  now = datetime.now()
-  date_str = now.strftime("%B %d, %Y")
+  date_str = get_localized_now(timezone).strftime("%B %d, %Y")
 
-  mtime = datetime.fromtimestamp(md_path.stat().st_mtime)
+  mtime_naive = datetime.fromtimestamp(md_path.stat().st_mtime)
+  mtime = localize_datetime(mtime_naive, tz_name=timezone)
   last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
   source_rel = md_path.name
 

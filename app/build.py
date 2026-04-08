@@ -28,7 +28,10 @@ from app.manifest import (
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY, _MANIFEST_NAV_KEY,
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
-from app.parsing import collect_page_info, parse_date_field, extract_date_dt
+from app.parsing import (
+  collect_page_info, parse_date_field, extract_date_dt,
+  get_localized_now, localize_datetime
+)
 from app.sidecar import build_sitemap_xml, build_search_json
 from app.highlight import HIGHLIGHT_CSS
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
@@ -41,7 +44,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
        dry_run: bool = False,
        posts_label: str = "Blog",
        config_path: Optional[Path] = None,
-       sanitize: bool = False) -> tuple[int, int, int]:
+       sanitize: bool = False,
+       timezone: Optional[str] = None) -> tuple[int, int, int]:
   """Run a full site build. Returns (ok, errors, skipped)."""
 
   files = find_markdown_files(root)
@@ -103,17 +107,18 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     if isinstance(fm_tags, list):
       for tag in fm_tags:
         tag_str = str(tag)
-        date_str = parse_date_field(front.get("date"))
+        date_str = parse_date_field(front.get("date"), tz_name=timezone)
         tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
 
     # Collect pages for posts listing: all layout='post' pages go here.
     # dated_pages entries: (out_html, title, date_dt, description)
     # date_dt is the front matter date if present, otherwise file mtime.
     if layout == "post":
-      date_dt = extract_date_dt(front.get("date"))
+      date_dt = extract_date_dt(front.get("date"), tz_name=timezone)
       if date_dt is None:
         try:
-          date_dt = datetime.fromtimestamp(md_path.stat().st_mtime)
+          mtime = datetime.fromtimestamp(md_path.stat().st_mtime)
+          date_dt = localize_datetime(mtime, tz_name=timezone)
         except OSError:
           date_dt = datetime.min
       dated_pages.append((out_html, title, date_dt, description))
@@ -248,6 +253,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
         layout=layout,
         posts_out=nav_posts_out, posts_label=posts_label,
         sanitize=sanitize,
+        timezone=timezone,
       )
       print(f"  ✓  {rel}  →  {out}")
       ok += 1

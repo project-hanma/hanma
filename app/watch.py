@@ -118,7 +118,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
          config_path: Optional[Path] = None,
          incremental: bool = False,
          manifest_path: Optional[Path] = None,
-         sanitize: bool = False) -> None:
+         sanitize: bool = False,
+         timezone: Optional[str] = None) -> None:
   """Fallback polling-based watch (used when watchdog is not available)."""
   print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
@@ -149,7 +150,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
              config_path=config_path,
              incremental=incremental,
              manifest_path=manifest_path,
-             sanitize=sanitize)
+             sanitize=sanitize,
+             timezone=timezone)
       last_mtimes = current_mtimes
       files = current_files
   except KeyboardInterrupt:
@@ -164,7 +166,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            config_path: Optional[Path] = None,
            incremental: bool = False,
            manifest_path: Optional[Path] = None,
-           sanitize: bool = False) -> None:
+           sanitize: bool = False,
+           timezone: Optional[str] = None) -> None:
   """Watch source files and regenerate on changes.
 
   Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
@@ -175,7 +178,7 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            base_url=base_url, poll_interval=poll_interval,
            posts_label=posts_label, config_path=config_path,
            incremental=incremental, manifest_path=manifest_path,
-           sanitize=sanitize)
+           sanitize=sanitize, timezone=timezone)
     return
 
   def rebuild():
@@ -186,7 +189,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            config_path=config_path,
            incremental=incremental,
            manifest_path=manifest_path,
-           sanitize=sanitize)
+           sanitize=sanitize,
+           timezone=timezone)
     except Exception as exc:
       print(f"  [watch] build error: {exc}")
 

@@ -229,6 +229,7 @@ Examples:
   cfg_watch       = site_config.get("watch",       False)
   cfg_incremental = site_config.get("incremental", False)
   cfg_sanitize    = site_config.get("sanitize",    False)
+  effective_timezone = site_config.get("timezone",    None)
 
   # Resolve effective serve port: explicit --serve N > --port N > config port > 8000
   if args.serve is not None:
@@ -271,7 +272,7 @@ Examples:
       return
     out_html.parent.mkdir(parents=True, exist_ok=True)
     copy_theme_assets(theme_dir, output_dir)
-    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template, sanitize=effective_sanitize)
+    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template, sanitize=effective_sanitize, timezone=effective_timezone)
     print(f"  ✓  {target.name}  →  {out_html}")
     print(f"\nDone.  1 converted, 0 errors.")
     if effective_serve:
@@ -299,6 +300,7 @@ Examples:
     posts_label=posts_label,
     config_path=config_path,
     sanitize=effective_sanitize,
+    timezone=effective_timezone,
   )
 
   if args.dry_run:
@@ -312,6 +314,7 @@ Examples:
       "incremental": effective_incremental,
       "manifest_path": manifest_path,
       "sanitize": effective_sanitize,
+      "timezone": effective_timezone,
     }
     if effective_serve:
       watch_thread = threading.Thread(

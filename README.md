@@ -207,9 +207,11 @@ project/
 | `--config FILE` | `conf/hanma.yml` | Path to a config file; overrides default lookup order |
 | `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--dry-run` | — | List matched files without writing HTML |
-| `--incremental` | — | Only rebuild pages whose source, theme template, or config file has changed since the last build |
-| `--sanitize` | — | Sanitize the generated HTML using `bleach` to prevent XSS (requires `bleach` package) |
+| `incremental` | — | Only rebuild pages whose source, theme template, or config file has changed since the last build |
+| `sanitize` | — | Sanitize the generated HTML using `bleach` to prevent XSS (requires `bleach` package) |
+| `timezone` | `UTC` | Timezone name for post dates and "last updated" timestamps (e.g., `America/New_York`) |
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port |
+
 | `--port PORT` | `8000` | Port for the local HTTP server (alternative to `--serve PORT`) |
 | `--host ADDR` | `127.0.0.1` | Bind address for the local HTTP server |
 | `--watch` | — | Watch source files and regenerate on changes after initial build |
@@ -233,6 +235,7 @@ host: 127.0.0.1         # HTTP server bind address
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
 sanitize: false         # sanitize generated HTML using bleach (true/false)
+timezone: UTC           # timezone name (e.g. America/New_York)
 posts_label: Blog       # label for the posts listing link in the nav (default: "Blog")
 ```
 
