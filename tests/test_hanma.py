@@ -1366,7 +1366,7 @@ class TestWatchdogWatch:
 
   @watchdog_available
   def test_hanma_event_handler_relevance(self, tmp_path):
-    handler = hanma._HanmaEventHandler(lambda: None, tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
     assert handler._is_relevant("file.md") is True
     assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
     assert handler._is_relevant("file.yaml") is True
@@ -1377,7 +1377,7 @@ class TestWatchdogWatch:
   def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
     from watchdog.events import FileOpenedEvent, FileClosedEvent, FileModifiedEvent
     triggered = []
-    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path)
+    handler = hanma._HanmaEventHandler(lambda: triggered.append(1), tmp_path, tmp_path)
     handler.on_any_event(FileOpenedEvent(str(tmp_path / "file.md")))
     handler.on_any_event(FileClosedEvent(str(tmp_path / "file.md")))
     assert triggered == [], "open/close events must not trigger rebuild"
@@ -1394,6 +1394,21 @@ class TestWatchdogWatch:
 # ---------------------------------------------------------------------------
 # --init scaffold
 # ---------------------------------------------------------------------------
+
+class TestBuildManifest:
+  def test_compute_nav_signature_includes_posts_out(self):
+    from app.manifest import compute_nav_signature
+    from pathlib import Path
+
+    nav = [(Path("index.html"), "Home", Path("index.md"), "page", None)]
+    sig_no_posts = compute_nav_signature(nav, posts_out=None)
+    sig_with_posts = compute_nav_signature(nav, posts_out=Path("posts/index.html"))
+
+    assert sig_no_posts != sig_with_posts, "Signature must change when posts_out is added"
+
+    sig_different_posts = compute_nav_signature(nav, posts_out=Path("other/index.html"))
+    assert sig_with_posts != sig_different_posts, "Signature must change when posts_out path changes"
+
 
 class TestInitScaffold:
 

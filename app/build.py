@@ -210,9 +210,9 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 
   # ── Pass 2: generate HTML with full nav ───────────────────────────────
   # Compute a signature of the current nav set. If it differs from the last
-  # build (pages added, removed, or renamed), every page must be regenerated
-  # so the nav stays consistent.
-  nav_sig = compute_nav_signature(nav_pages) if nav_pages else ""
+  # build (pages added, removed, or renamed, or if the blog link appears/disappears),
+  # every page must be regenerated so the nav stays consistent.
+  nav_sig = compute_nav_signature(nav_pages, posts_out=nav_posts_out) if (nav_pages or nav_posts_out) else ""
 
   for md_path, out_html, _title, layout, _si in all_files:
     try:
