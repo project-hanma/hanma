@@ -18,6 +18,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 _MANIFEST_TEMPLATE_KEY = "_template_mtime"
@@ -25,14 +26,21 @@ _MANIFEST_CONFIG_KEY   = "_config_mtime"
 _MANIFEST_NAV_KEY      = "_nav_signature"
 
 
-def compute_nav_signature(nav_pages: list) -> str:
+def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None) -> str:
   """Return a stable hash of the current nav page set.
 
   nav_pages is a list of (out_html, title, md_path, layout) tuples.
   The signature covers the output paths and titles so that any addition,
   removal, or rename forces a full nav rebuild.
+  Also includes posts_out so that adding/removing the first post triggers
+  a rebuild of all pages to update the nav link.
   """
-  entries = sorted(str(out_html) for out_html, *_ in nav_pages)
+  entries = [str(out_html) for out_html, *_ in nav_pages]
+  if posts_out:
+    entries.append(f"POSTS:{posts_out}")
+  
+  # Stable sort for a consistent hash
+  entries.sort()
   return hashlib.md5("\n".join(entries).encode()).hexdigest()
 
 

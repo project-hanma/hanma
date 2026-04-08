@@ -1395,6 +1395,21 @@ class TestWatchdogWatch:
 # --init scaffold
 # ---------------------------------------------------------------------------
 
+class TestBuildManifest:
+  def test_compute_nav_signature_includes_posts_out(self):
+    from app.manifest import compute_nav_signature
+    from pathlib import Path
+
+    nav = [(Path("index.html"), "Home", Path("index.md"), "page", None)]
+    sig_no_posts = compute_nav_signature(nav, posts_out=None)
+    sig_with_posts = compute_nav_signature(nav, posts_out=Path("posts/index.html"))
+
+    assert sig_no_posts != sig_with_posts, "Signature must change when posts_out is added"
+
+    sig_different_posts = compute_nav_signature(nav, posts_out=Path("other/index.html"))
+    assert sig_with_posts != sig_different_posts, "Signature must change when posts_out path changes"
+
+
 class TestInitScaffold:
 
   def test_init_creates_scaffold_files(self, tmp_path):
