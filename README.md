@@ -260,6 +260,7 @@ The following are silently skipped during directory traversal:
 
 - Any file or directory whose name begins with `.` (e.g. `.venv`, `.git`)
 - `README.md` and `README.markdown` (case-insensitive) in any directory
+- Any `.md` or `.markdown` file with a size of 0 bytes
 
 ## Front Matter
 
