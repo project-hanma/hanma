@@ -119,6 +119,7 @@ def _resolve_tz(tz_name: Optional[str]) -> timezone | ZoneInfo:
     return ZoneInfo(tz_name)
   except Exception:
     # Invalid timezone name; fallback to UTC
+    print(f"Warning: timezone '{tz_name}' not found. Falling back to UTC.", file=sys.stderr)
     return timezone.utc
 
 
@@ -155,11 +156,11 @@ def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None) -> datetime | No
     return None
 
 
-def collect_page_info(md_path: Path) -> tuple:
-  """Return (title, description, front_matter) for a Markdown file without full conversion."""
+def collect_page_info(md_path: Path) -> tuple[str, str, dict, str]:
+  """Return (title, description, front_matter, md_text) for a Markdown file."""
   md_text = md_path.read_text(encoding="utf-8")
   front, body = parse_front_matter(md_text, source_path=md_path)
   fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
   title = front.get("title") or extract_title(body, fallback)
   description = front.get("description") or extract_description(body)
-  return title, description, front
+  return title, description, front, md_text

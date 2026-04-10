@@ -23,37 +23,23 @@ from typing import Optional
 from app.files import POSTS_DIR_NAME
 
 
-def build_nav_html(current_out_html: Path,
-         nav_pages: list[tuple],
-         output_root: Optional[Path] = None,
-         posts_out: Optional[Path] = None,
-         posts_label: str = "Blog",
-         recent_posts: Optional[list[tuple]] = None) -> str:
-  """Build the <ul> content for the sticky nav bar.
-
-  Navigation is structured by folder hierarchy, not by headings:
-  - "Home" (root index.md) is always the first item.
-  - Root-level non-index pages appear next as top-level items.
-  - A subdirectory with an index.md becomes a top-level item (using that index's
-   title) with a dropdown listing the other pages in that directory.
-  - Pages with layout='post' outside posts/ are treated as root-level items.
-  - The posts/ directory is excluded from the page-based nav.
-  - If posts_out is provided, a link to it is appended as the last nav item
-   (labelled posts_label, default "Blog").
-  - If recent_posts is provided, the posts link becomes a dropdown showing those posts.
-  - Headings are no longer used to generate dropdown menu items.
-
-  nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples.
-  sort_index, when set (integer >= 1), controls the order of top-level nav items and
-  dropdown items: lower values appear first; items without sort_index retain their
-  discovery order but appear after all items that have a sort_index.
-  output_root is the output directory root (used to compute relative depth).
-  posts_out is the Path to the generated posts.html (or None if no posts exist).
-  posts_label is the display label for the posts link.
-  recent_posts is a list of (out_html_path, title) tuples for the dropdown.
+def get_nav_data(current_out_html: Path,
+               nav_pages: list[tuple],
+               output_root: Optional[Path] = None,
+               posts_out: Optional[Path] = None,
+               posts_label: str = "Blog",
+               recent_posts: Optional[list[tuple]] = None) -> list[dict]:
+  """Return a structured list of navigation items.
+  
+  Each item is a dict:
+    title: str
+    url: str (optional)
+    is_current: bool
+    is_folder: bool
+    children: list[dict] (optional)
   """
   if not nav_pages and posts_out is None:
-    return ""  # single-file mode: no cross-page nav
+    return []
 
   def _rel_url(target: Path) -> str:
     try:
@@ -61,26 +47,6 @@ def build_nav_html(current_out_html: Path,
     except ValueError:
       return target.as_posix()
 
-  def _li(page_html: Path, page_title: str, dropdown_items: list[str] = None) -> str:
-    is_current = page_html == current_out_html
-    safe_url = html.escape(_rel_url(page_html), quote=True)
-    safe_title = html.escape(page_title)
-    css = ' class="nav-current"' if is_current else ""
-    aria = ' aria-current="page"' if is_current else ""
-    if dropdown_items:
-      drop_html = "\n    <ul>\n" + "".join(
-        f'      <li><a href="{u}">{t}</a></li>\n'
-        for u, t in dropdown_items
-      ) + "    </ul>"
-      return (
-        f'  <li{css}>\n'
-        f'    <a href="{safe_url}"{aria}>{safe_title}</a>'
-        f'{drop_html}\n  </li>'
-      )
-    return f'  <li{css}>\n    <a href="{safe_url}"{aria}>{safe_title}</a>\n  </li>'
-
-  # Determine the depth of each page relative to output_root so we can
-  # classify pages as root-level vs inside a subdirectory.
   def _depth(page_html: Path) -> int:
     if output_root is None:
       return 0
@@ -89,17 +55,11 @@ def build_nav_html(current_out_html: Path,
     except ValueError:
       return 0
 
-  # Group pages by their parent directory (relative to output_root).
-  # Structure: {dir_key: {"index": entry|None, "children": [entry, ...]}}
-  # dir_key = "" for root, else the relative dir string.
-  # entry = (out_html_path, title, md_path, layout, sort_index)
   groups: dict = OrderedDict()
-
   for entry in nav_pages:
     page_html, page_title, md_path, layout, sort_index = entry
     depth = _depth(page_html)
 
-    # Determine the group key (the directory relative to output_root)
     if output_root is not None:
       try:
         rel_parts = page_html.relative_to(output_root).parts
@@ -108,114 +68,151 @@ def build_nav_html(current_out_html: Path,
     else:
       rel_parts = (page_html.name,)
 
-    if depth == 0:
-      dir_key = ""
-    else:
-      dir_key = rel_parts[0]  # top-level subdirectory name
-
-    # Skip the posts/ directory — it's represented by the posts listing page
+    dir_key = "" if depth == 0 else rel_parts[0]
     if dir_key == POSTS_DIR_NAME:
       continue
 
     if dir_key not in groups:
       groups[dir_key] = {"index": None, "children": []}
 
-    is_dir_index = depth > 0 and page_html.stem.lower() == "index"
-    if is_dir_index:
+    if depth > 0 and page_html.stem.lower() == "index":
       groups[dir_key]["index"] = entry
     else:
       groups[dir_key]["children"].append(entry)
 
-  # Separate root-level home (index.html) from other root pages so we can
-  # guarantee Home is always the first nav item.
-  home_item: Optional[str] = None
-  other_items: list[str] = []
-
+  home_item: Optional[dict] = None
+  
   def _si_key(si) -> tuple:
-    """Sort key for a raw sort_index value: sorted entries first, unsorted last."""
     return (1 if si is None else 0, si if si is not None else 0)
 
-  # Collect (sort_index, li_html) pairs so root pages and subdir groups can be
-  # sorted together before appending to other_items.
-  pending: list[tuple] = []  # (sort_index, li_html)
+  pending: list[tuple] = []  # (sort_index, item_dict)
 
   for dir_key, group in groups.items():
     if dir_key == "":
-      # Root-level pages: extract home, collect the rest with their sort_index
       for entry in group["children"]:
         page_html, page_title, md_path, layout, sort_index = entry
-        li = _li(page_html, page_title)
+        is_current = page_html == current_out_html
+        item = {
+          "title": page_title,
+          "url": _rel_url(page_html),
+          "is_current": is_current,
+          "is_folder": False
+        }
         if page_html.stem.lower() == "index" and (
           output_root is None or page_html.parent == output_root
         ):
-          home_item = li
+          home_item = item
         else:
-          pending.append((sort_index, li))
+          pending.append((sort_index, item))
     else:
       idx = group["index"]
       children = group["children"]
       if idx is not None:
-        # Directory with an index: sort_index comes from the index.md entry
         idx_html, _, _, _, idx_si = idx
         idx_title = dir_key.replace("-", " ").replace("_", " ").title()
-        dropdown = []
+        item = {
+          "title": idx_title,
+          "url": _rel_url(idx_html),
+          "is_current": idx_html == current_out_html,
+          "is_folder": True,
+          "children": []
+        }
         for child_html, child_title, _, _, _ in sorted(children, key=lambda e: _si_key(e[4])):
-          safe_u = html.escape(_rel_url(child_html), quote=True)
-          safe_t = html.escape(child_title)
-          is_cur = child_html == current_out_html
-          cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
-          dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
-        pending.append((idx_si, _li(idx_html, idx_title, dropdown if dropdown else None)))
+          item["children"].append({
+            "title": child_title,
+            "url": _rel_url(child_html),
+            "is_current": child_html == current_out_html,
+            "is_folder": False
+          })
+        pending.append((idx_si, item))
       else:
-        # No index — use the folder name as a non-linking dropdown header;
-        # sort_index for the group comes from the first child that has one, else None.
         if children:
           group_si = next((e[4] for e in children if e[4] is not None), None)
-          folder_label = html.escape(dir_key.replace("-", " ").replace("_", " ").title())
-          dropdown = []
+          item = {
+            "title": dir_key.replace("-", " ").replace("_", " ").title(),
+            "url": None,
+            "is_current": any(ch == current_out_html for ch, *_ in children),
+            "is_folder": True,
+            "children": []
+          }
           for child_html, child_title, _, _, _ in sorted(children, key=lambda e: _si_key(e[4])):
-            safe_u = html.escape(_rel_url(child_html), quote=True)
-            safe_t = html.escape(child_title)
-            is_cur = child_html == current_out_html
-            cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
-            dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
-          is_current_group = any(ch == current_out_html for ch, _, _, _, _ in children)
-          css = ' class="nav-current"' if is_current_group else ""
-          drop_html = "\n    <ul>\n" + "".join(
-            f'      <li><a href="{u}">{t}</a></li>\n'
-            for u, t in dropdown
-          ) + "    </ul>"
-          pending.append((group_si, (
-            f'  <li{css}>\n'
-            f'    <span class="nav-folder">{folder_label}</span>'
-            f'{drop_html}\n  </li>'
-          )))
+            item["children"].append({
+              "title": child_title,
+              "url": _rel_url(child_html),
+              "is_current": child_html == current_out_html,
+              "is_folder": False
+            })
+          pending.append((group_si, item))
 
-  # Sort pending items: sort_index defined → ascending; no sort_index → original order
-  # Use enumerate to preserve discovery order as a stable tiebreaker.
   pending.sort(key=lambda t: _si_key(t[0]))
-  other_items.extend(li for _, li in pending)
+  items = ([home_item] if home_item else []) + [t[1] for t in pending]
 
-  items = ([home_item] if home_item else []) + other_items
-
-  # Append posts listing link last (if posts exist)
   if posts_out is not None:
-    dropdown = []
+    item = {
+      "title": posts_label,
+      "url": _rel_url(posts_out),
+      "is_current": posts_out == current_out_html,
+      "is_folder": bool(recent_posts),
+      "children": []
+    }
     if recent_posts:
       for post_html, post_title in recent_posts:
-        safe_u = html.escape(_rel_url(post_html), quote=True)
-        safe_t = html.escape(post_title)
-        is_cur = post_html == current_out_html
-        cur_cls = ' style="font-weight:600;color:var(--accent)"' if is_cur else ""
-        dropdown.append((safe_u, f'<span{cur_cls}>{safe_t}</span>'))
+        item["children"].append({
+          "title": post_title,
+          "url": _rel_url(post_html),
+          "is_current": post_html == current_out_html,
+          "is_folder": False
+        })
+      item["children"].append({
+        "title": "More posts...",
+        "url": _rel_url(posts_out),
+        "is_current": False,
+        "is_folder": False,
+        "is_more_link": True
+      })
+    items.append(item)
 
-      # Add "More posts..." link with a separator
-      safe_posts_url = html.escape(_rel_url(posts_out), quote=True)
-      dropdown.append((safe_posts_url, '<span class="nav-more-posts-sep"></span><span class="nav-more-posts">More posts...</span>'))
+  return items
 
-    items.append(_li(posts_out, posts_label, dropdown if dropdown else None))
 
+def build_nav_html(current_out_html: Path,
+         nav_pages: list[tuple],
+         output_root: Optional[Path] = None,
+         posts_out: Optional[Path] = None,
+         posts_label: str = "Blog",
+         recent_posts: Optional[list[tuple]] = None) -> str:
+  """Build the <ul> content for the sticky nav bar. (Legacy string-builder)"""
+  items = get_nav_data(current_out_html, nav_pages, output_root, posts_out, posts_label, recent_posts)
   if not items:
     return ""
 
-  return "\n<ul>\n" + "\n".join(items) + "\n</ul>\n"
+  def _render_item(item: dict) -> str:
+    css = ' class="nav-current"' if item["is_current"] else ""
+    aria = ' aria-current="page"' if item["is_current"] else ""
+    title = html.escape(item["title"])
+    url = html.escape(item["url"], quote=True) if item["url"] else None
+
+    if item.get("children"):
+      drop_html = "\n    <ul>\n"
+      for child in item["children"]:
+        child_url = html.escape(child["url"], quote=True)
+        child_title = html.escape(child["title"])
+        if child.get("is_more_link"):
+          drop_html += f'      <li><span class="nav-more-posts-sep"></span><a href="{child_url}"><span class="nav-more-posts">{child_title}</span></a></li>\n'
+        else:
+          cur_style = ' style="font-weight:600;color:var(--accent)"' if child["is_current"] else ""
+          drop_html += f'      <li><a href="{child_url}"><span{cur_style}>{child_title}</span></a></li>\n'
+      drop_html += "    </ul>"
+      
+      if url:
+        return f'  <li{css}>\n    <a href="{url}"{aria}>{title}</a>{drop_html}\n  </li>'
+      else:
+        return f'  <li{css}>\n    <span class="nav-folder">{title}</span>{drop_html}\n  </li>'
+    
+    return f'  <li{css}>\n    <a href="{url}"{aria}>{title}</a>\n  </li>'
+
+  html_parts = ["\n<ul>"]
+  for item in items:
+    html_parts.append(_render_item(item))
+  html_parts.append("</ul>\n")
+  return "\n".join(html_parts)

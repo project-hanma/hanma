@@ -41,8 +41,8 @@
         var li = document.createElement("li");
         var a  = document.createElement("a");
         a.href = new URL(r.url, searchBase).href;
-        a.innerHTML = esc(r.title) +
-          (r.description ? '<span class="search-desc">' + esc(r.description) + '</span>' : "");
+        a.innerHTML = r.title +
+          (r.description ? '<span class="search-desc">' + r.description + '</span>' : "");
         li.appendChild(a);
         drop.appendChild(li);
       });

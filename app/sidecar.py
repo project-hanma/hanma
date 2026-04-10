@@ -60,10 +60,10 @@ def build_search_json(entries: list[dict], output_root: Path,
     if base and url:
       url = f"{base}/{url}"
     normalized.append({
-      "title": entry.get("title", ""),
-      "description": entry.get("description", ""),
+      "title": html.escape(entry.get("title", "")),
+      "description": html.escape(entry.get("description", "")),
       "url": url,
-      "tags": entry.get("tags", []),
+      "tags": [html.escape(str(t)) for t in entry.get("tags", [])],
     })
   out = output_root / "search.json"
   out.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n",
