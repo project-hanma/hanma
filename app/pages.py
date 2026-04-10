@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from app.nav import build_nav_html
+from app.nav import build_nav_html, get_nav_data
 
 
 def _normalize_tag(tag: str) -> str:
@@ -64,7 +64,7 @@ def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str)
 def _make_generated_page(content_html: str, title: str, description: str,
              out_path: Path, site_name: str,
              nav_pages: list[tuple],
-             template: string.Template,
+             template,
              sitemap_link: str = "",
              search_json_url: str = "search.json",
              output_root: Optional[Path] = None,
@@ -75,6 +75,9 @@ def _make_generated_page(content_html: str, title: str, description: str,
   nav_html = build_nav_html(out_path, nav_pages, output_root=output_root,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
+  nav_items = get_nav_data(out_path, nav_pages, output_root=output_root,
+               posts_out=posts_out, posts_label=posts_label,
+               recent_posts=recent_posts)
   now = datetime.now()
   titles_match = site_name and title.lower() == site_name.lower()
   if site_name and not titles_match:
@@ -82,17 +85,18 @@ def _make_generated_page(content_html: str, title: str, description: str,
   else:
     display_title = site_name or title
 
-  page_html = template.substitute(
-    title=html.escape(display_title),
-    description=html.escape(description),
+  page_html = template.render(
+    title=display_title,
+    description=description,
     author_meta="",
     keywords_meta="",
     refresh_meta="",
     author_line="",
-    site_name=html.escape(site_name),
+    site_name=site_name,
     date_str=now.strftime("%B %d, %Y"),
     content=content_html,
     nav=nav_html,
+    nav_items=nav_items,
     source_file="(generated)",
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
     sitemap_link=sitemap_link,
@@ -105,7 +109,7 @@ def _make_generated_page(content_html: str, title: str, description: str,
 
 def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
              site_name: str, nav_pages: list[tuple],
-             template: string.Template,
+             template,
              base_url: str = "",
              output_root: Optional[Path] = None,
              posts_out: Optional[Path] = None,
@@ -146,7 +150,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
 
 def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                site_name: str, nav_pages: list[tuple],
-               template: string.Template,
+               template,
                base_url: str = "",
                output_root: Optional[Path] = None,
                posts_label: str = "Blog",

@@ -15,7 +15,13 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 import shutil
-import string
+try:
+  import jinja2
+except ImportError as exc:
+  raise RuntimeError(
+    "Required package 'Jinja2' not found. "
+    "Install it with:  pip install Jinja2"
+  ) from exc
 from pathlib import Path
 
 
@@ -39,10 +45,13 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
     hint = f"  Available: {', '.join(available)}" if available else \
       "  (no themes/ directory found)"
     raise ThemeError(f"theme '{name}' not found at {theme_dir}\n{hint}")
-  template_path = theme_dir / "template.html"
-  if not template_path.is_file():
-    raise ThemeError(f"theme '{name}' is missing template.html ({template_path})")
-  return string.Template(template_path.read_text(encoding="utf-8")), theme_dir
+  
+  loader = jinja2.FileSystemLoader(str(theme_dir))
+  env = jinja2.Environment(loader=loader, autoescape=True)
+  try:
+    return env.get_template("template.html"), theme_dir
+  except jinja2.TemplateNotFound:
+    raise ThemeError(f"theme '{name}' is missing template.html ({theme_dir / 'template.html'})")
 
 
 _CSS_SUBDIR = Path("assets") / "css"

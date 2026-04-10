@@ -44,7 +44,7 @@ try:
 except ImportError:
   _BLEACH_AVAILABLE = False
 
-from app.nav import build_nav_html
+from app.nav import build_nav_html, get_nav_data
 from app.pages import _normalize_tag, _search_json_url
 from app.parsing import (
   parse_front_matter, extract_title, extract_description,
@@ -53,7 +53,7 @@ from app.parsing import (
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             nav_pages: Optional[list] = None,
-            template: Optional[string.Template] = None,
+            template=None,
             tags_out_dir: Optional[Path] = None,
             base_url: str = "",
             output_root: Optional[Path] = None,
@@ -62,7 +62,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             posts_label: str = "Blog",
             sanitize: bool = False,
             timezone: Optional[str] = None,
-            recent_posts: Optional[list] = None) -> Path:
+            recent_posts: Optional[list] = None,
+            md_text: Optional[str] = None) -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -76,12 +77,15 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   search_json_url template variables.
   sanitize=True will clean the generated HTML using bleach if available.
   recent_posts is an optional list of (out_html, title) tuples for the nav.
+  md_text, if provided, avoids reading md_path again.
   """
   if template is None:
     import app as _app
     from app.theme import _load_theme_impl
     template, _ = _load_theme_impl("default", _app._THEMES_DIR)
-  md_text = md_path.read_text(encoding="utf-8")
+  
+  if md_text is None:
+    md_text = md_path.read_text(encoding="utf-8")
   front, body = parse_front_matter(md_text, source_path=md_path)
 
   fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
@@ -139,49 +143,51 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   md = markdown.Markdown(extensions=extensions, output_format="html")
   content_html = md.convert(body)
 
-  if sanitize:
-    if _BLEACH_AVAILABLE:
+  # ── Sanitization ────────────────────────────────────────────────────────
+  def _clean_if_needed(html_str: str) -> str:
+    if sanitize and _BLEACH_AVAILABLE:
       # Use a permissive set of tags/attributes to avoid breaking Markdown extensions
       # like TOC, syntax highlighting, and tables, while still stripping <script>, etc.
+      # Also allow some attrs used by Hanma's nav/tag generation.
       allowed_tags = [
         'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol',
         'strong', 'ul', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'div',
         'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
-        'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
+        'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary', 'em'
       ]
       allowed_attrs = {
-        '*': ['class', 'id'],
-        'a': ['href', 'title', 'rel'],
+        '*': ['class', 'id', 'style'],
+        'a': ['href', 'title', 'rel', 'aria-current'],
         'img': ['src', 'alt', 'title', 'width', 'height'],
       }
-      content_html = bleach.clean(content_html, tags=allowed_tags, attributes=allowed_attrs)
-    else:
-      import sys
-      print("Warning: 'sanitize' enabled but 'bleach' package not found. Skipping sanitization.",
-         file=sys.stderr)
+      return bleach.clean(html_str, tags=allowed_tags, attributes=allowed_attrs)
+    return html_str
 
-  # Append tag strip to content if tags are present
+  content_html = _clean_if_needed(content_html)
+  author_line = _clean_if_needed(author_line)
+
+  # Build structured tags for templates
+  page_tags = []
   if isinstance(fm_tags, list) and fm_tags:
-    tag_items_html = []
     for t in fm_tags:
-      tag_text = html.escape(str(t))
+      tag_name = str(t)
+      slug = _normalize_tag(tag_name)
+      tag_url = None
       if tags_out_dir is not None:
-        slug = _normalize_tag(str(t))
         tag_html_path = tags_out_dir / f"{slug}.html"
         try:
-          rel_url = html.escape(
-            os.path.relpath(tag_html_path, out_path.parent), quote=True
-          )
+          tag_url = os.path.relpath(tag_html_path, out_path.parent)
         except ValueError:
-          rel_url = html.escape(tag_html_path.as_posix(), quote=True)
-        tag_items_html.append(
-          f'<a class="tag" href="{rel_url}">{tag_text}</a>'
-        )
-      else:
-        tag_items_html.append(f'<span class="tag">{tag_text}</span>')
-    content_html += f'\n<div class="page-tags">{"".join(tag_items_html)}</div>'
+          tag_url = tag_html_path.as_posix()
+      page_tags.append({"name": tag_name, "slug": slug, "url": tag_url})
 
   nav_html = build_nav_html(out_path, nav_pages or [],
+               output_root=output_root,
+               posts_out=posts_out, posts_label=posts_label,
+               recent_posts=recent_posts)
+  nav_html = _clean_if_needed(nav_html)
+
+  nav_items = get_nav_data(out_path, nav_pages or [],
                output_root=output_root,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
@@ -211,17 +217,19 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   else:
     display_title = title
 
-  page_html = template.substitute(
-    title=html.escape(display_title),
-    description=html.escape(description),
+  page_html = template.render(
+    title=display_title,
+    description=description,
     author_meta=author_meta,
     keywords_meta=keywords_meta,
     refresh_meta=refresh_meta,
     author_line=author_line,
-    site_name=html.escape(site_name),
+    site_name=site_name,
     date_str=date_str,
     content=content_html,
     nav=nav_html,
+    nav_items=nav_items,
+    page_tags=page_tags,
     source_file=source_rel,
     last_updated=last_updated,
     sitemap_link=sitemap_link,

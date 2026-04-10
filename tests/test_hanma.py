@@ -708,9 +708,8 @@ class TestFrontMatterIntegration:
 class TestThemes:
   def test_default_theme_loads(self):
     template, theme_dir = hanma.load_theme("default")
-    import string
-    assert isinstance(template, string.Template)
-    assert "$title" in template.template
+    import jinja2
+    assert isinstance(template, jinja2.Template)
     assert theme_dir.name == "default"
 
   def test_missing_theme_exits_nonzero(self):

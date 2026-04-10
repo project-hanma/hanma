@@ -50,8 +50,21 @@ def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None,
   return hashlib.md5("\n".join(entries).encode()).hexdigest()
 
 
+def compute_text_hash(text: str) -> str:
+  """Return SHA256 hash of the given text."""
+  return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def compute_file_hash(path: Path) -> str:
+  """Return SHA256 hash of file content."""
+  try:
+    return compute_text_hash(path.read_text(encoding="utf-8"))
+  except OSError:
+    return ""
+
+
 def load_build_manifest(manifest_path: Path) -> dict:
-  """Load JSON manifest mapping str(md_path) -> mtime float. Returns {} on miss."""
+  """Load JSON manifest mapping str(md_path) -> sha256 hash. Returns {} on miss."""
   if not manifest_path.is_file():
     return {}
   try:
@@ -72,12 +85,13 @@ def save_build_manifest(manifest_path: Path, manifest: dict) -> None:
 
 def page_needs_rebuild(md_path: Path, out_html: Path, manifest: dict,
             template_mtime: float, config_mtime: float = 0.0,
-            nav_signature: str = "") -> bool:
+            nav_signature: str = "",
+            md_hash: str = "") -> bool:
   """Return True if md_path should be regenerated.
 
   Triggers rebuild if:
   - out_html does not exist
-  - md_path mtime differs from manifest entry
+  - md_path content hash differs from manifest entry
   - template_mtime is newer than the manifest's recorded template_mtime
   - config_mtime is newer than the manifest's recorded config_mtime
   - nav_signature differs from the manifest's recorded nav_signature
@@ -86,11 +100,19 @@ def page_needs_rebuild(md_path: Path, out_html: Path, manifest: dict,
     return True
   if str(md_path) not in manifest:
     return True
-  try:
-    if md_path.stat().st_mtime != manifest[str(md_path)]:
+
+  # Fallback to mtime check if we don't have a hash or if manifest entry looks like a float (legacy)
+  entry = manifest[str(md_path)]
+  if not md_hash or isinstance(entry, (float, int)):
+    try:
+      if md_path.stat().st_mtime != entry:
+        return True
+    except (OSError, TypeError):
       return True
-  except OSError:
-    return True
+  else:
+    if md_hash != entry:
+      return True
+
   if template_mtime > manifest.get(_MANIFEST_TEMPLATE_KEY, 0.0):
     return True
   if config_mtime > manifest.get(_MANIFEST_CONFIG_KEY, 0.0):
