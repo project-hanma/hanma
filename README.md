@@ -32,9 +32,10 @@ It builds your blog. That's mostly it.
 - Layout system — `layout: post` or `layout: page` front matter (files in `posts/` default to `post`; all others default to `page`); `posts/index.html` listing auto-generated from all `layout: post` pages sorted by date (using front matter `date` if available, falling back to file modification time; newest first), accessible at `/posts/`
 - Client-side search — `search.json` generated and searchable inline via the default theme's header search box
 - Sitemap — `sitemap.xml` generated when `--base-url` is set
-- HTML sanitization (`--sanitize`) — optionally cleans generated HTML using `bleach` to prevent XSS from untrusted Markdown
+- HTML sanitization (`--sanitize`) — optionally cleans generated HTML using `bleach` to prevent XSS from untrusted Markdown; coverage includes body content, navigation, and author lines
 - Static asset passthrough — `site/static/` copied verbatim to the output directory
-- Incremental builds (`--incremental`) — only regenerates pages whose source, theme template, or config file has changed
+- Incremental builds (`--incremental`) — only regenerates pages whose source content (via SHA256 hash), theme template, or config file has changed
+- Timezone awareness — configure a global `timezone` (e.g. `America/New_York`) for consistent post dating and "last updated" timestamps
 - `--init` scaffold — creates a sample `site/` directory with starter content
 - Skips dot-directories (e.g. `.venv`, `.git`) and `README.md` files automatically
 
@@ -45,6 +46,7 @@ Python 3.10+ and the following packages:
 - `markdown`: Markdown to HTML conversion
 - `pygments`: Syntax highlighting
 - `pyyaml`: Front matter and config parsing
+- `jinja2`: Powerful HTML templating
 - `watchdog`: File system watching (optional, but recommended)
 - `bleach`: HTML sanitization (optional, used with `--sanitize`)
 
@@ -62,7 +64,7 @@ source .venv/bin/activate        # Linux / macOS
 .venv\Scripts\activate           # Windows
 
 # Install dependencies
-pip install markdown pygments pyyaml watchdog bleach
+pip install markdown pygments pyyaml jinja2 watchdog bleach
 
 # When you are done
 deactivate
@@ -376,27 +378,60 @@ List available themes:
 ### Creating a custom theme
 
 1. Copy `themes/default/` to `themes/mytheme/`
-2. Edit `template.html` — it uses Python's `string.Template` `$variable` syntax
-3. Place static assets inside an `assets/` subdirectory — they will be merged into `output/assets/` at build time (e.g. `assets/css/style.css` → `output/assets/css/style.css`)
+2. Edit `template.html` — it uses [Jinja2](https://jinja.palletsprojects.com/) `{{ variable }}` syntax.
+3. Place static assets inside an `assets/` subdirectory — they will be merged into `output/assets/` at build time.
 
-Available variables in `template.html`:
+#### Template Variables
 
-| Variable | Content |
-|---|---|
-| `$title` | Browser title (automatically prepended with site name) |
-| `$description` | Page description (meta) |
-| `$site_name` | Site name from `--name` or config |
-| `$date_str` | Today's date |
-| `$nav` | Navigation bar HTML |
-| `$content` | Rendered page content |
-| `$author_line` | Author/date attribution (empty if not set) |
-| `$author_meta` | `<meta name="author">` tag (empty if not set) |
-| `$keywords_meta` | `<meta name="keywords">` tag (empty if not set) |
-| `$refresh_meta` | `<meta http-equiv="refresh">` tag (empty if `refresh` not set) |
-| `$source_file` | Source `.md` filename |
-| `$last_updated` | File modification timestamp |
-| `$sitemap_link` | Link to `sitemap.xml` (empty if `--base-url` not set) |
-| `$search_json_url` | URL to `search.json` (relative or absolute) |
+Hanma provides both pre-rendered HTML blocks (for quick setup) and structured data (for full design control).
+
+| Variable | Type | Content |
+|---|---|---|
+| `title` | string | Browser title |
+| `description` | string | Page description (meta) |
+| `site_name` | string | Site name from `--name` or config |
+| `date_str` | string | Today's date |
+| `content` | string | **(HTML)** Rendered page content (use `{{ content | safe }}`) |
+| `nav` | string | **(HTML)** Legacy pre-rendered navigation `<ul>` (use `{{ nav | safe }}`) |
+| `nav_items` | list | Structured navigation data for custom loops (see below) |
+| `page_tags` | list | Structured list of tags for the current page: `[{"name": "...", "url": "..."}]` |
+| `author_line` | string | **(HTML)** Author/date attribution (use `{{ author_line | safe }}`) |
+| `author_meta` | string | **(HTML)** `<meta name="author">` tag |
+| `keywords_meta` | string | **(HTML)** `<meta name="keywords">` tag |
+| `refresh_meta` | string | **(HTML)** `<meta http-equiv="refresh">` tag |
+| `source_file` | string | Source `.md` filename |
+| `last_updated` | string | File modification timestamp |
+| `sitemap_link` | string | **(HTML)** Link to `sitemap.xml` |
+| `search_json_url` | string | URL to `search.json` (relative or absolute) |
+
+#### Custom Navigation Loop
+
+Instead of using `{{ nav | safe }}`, you can build your own menu using `nav_items`:
+
+```html
+<ul>
+  {% for item in nav_items %}
+    <li{% if item.is_current %} class="active"{% endif %}>
+      <a href="{{ item.url }}">{{ item.title }}</a>
+      {% if item.children %}
+        <ul class="dropdown">
+          {% for child in item.children %}
+            <li><a href="{{ child.url }}">{{ child.title }}</a></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>
+```
+
+Each item in `nav_items` contains:
+- `title`: Display name
+- `url`: Relative path to the page
+- `is_current`: Boolean (true if it's the current page)
+- `is_folder`: Boolean (true if it's a directory group)
+- `children`: Nested list of items (for dropdowns)
+- `is_more_link`: Boolean (true for the "More posts..." link)
 
 ## Testing
 
