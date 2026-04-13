@@ -41,8 +41,18 @@
         var li = document.createElement("li");
         var a  = document.createElement("a");
         a.href = new URL(r.url, searchBase).href;
-        a.innerHTML = r.title +
-          (r.description ? '<span class="search-desc">' + r.description + '</span>' : "");
+        
+        // Use textContent for safety
+        var titleNode = document.createTextNode(r.title);
+        a.appendChild(titleNode);
+        
+        if (r.description) {
+          var span = document.createElement("span");
+          span.className = "search-desc";
+          span.textContent = r.description;
+          a.appendChild(span);
+        }
+        
         li.appendChild(a);
         drop.appendChild(li);
       });

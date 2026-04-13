@@ -87,11 +87,11 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
     if isinstance(fm_tags, list):
       for tag in fm_tags:
         tag_str = str(tag)
-        date_str = parse_date_field(front.get("date"), tz_name=timezone)
+        date_str = parse_date_field(front.get("date"), tz_name=timezone, source_path=md_path)
         tags_map.setdefault(tag_str, []).append((out_html, title, date_str))
 
     if layout == "post":
-      date_dt = extract_date_dt(front.get("date"), tz_name=timezone)
+      date_dt = extract_date_dt(front.get("date"), tz_name=timezone, source_path=md_path)
       if date_dt is None:
         try:
           mtime = datetime.fromtimestamp(md_path.stat().st_mtime)
@@ -261,7 +261,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       try:
         return (0, datetime.strptime(date_str, "%B %d, %Y"))
       except ValueError:
-        pass
+        print(f"Warning: malformed internal date '{date_str}' in tag sort", file=sys.stderr)
     return (1, datetime.min)
 
   for tag, tag_pages in tags_map.items():

@@ -21,12 +21,19 @@ It builds your blog. That's mostly it.
 
 ### 1. Requirements & Setup
 
-Hanma requires Python 3.10+. Install the core dependencies into a virtual environment:
+Hanma requires Python 3.10+. Install the core dependencies (including optional sanitization support) into a virtual environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
-pip install markdown pygments pyyaml jinja2 watchdog
+pip install markdown pygments pyyaml jinja2 watchdog bleach tinycss2 html5lib
+```
+
+## Setup
+
+Make the script executable so you can run it directly without typing `python`:
+
+```bash
 chmod +x hanma.py
 ```
 

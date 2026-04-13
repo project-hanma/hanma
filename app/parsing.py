@@ -123,23 +123,22 @@ def _resolve_tz(tz_name: Optional[str]) -> timezone | ZoneInfo:
     return timezone.utc
 
 
-def parse_date_field(fm_date_raw, tz_name: Optional[str] = None) -> str:
+def parse_date_field(fm_date_raw, tz_name: Optional[str] = None, source_path: Optional[Path] = None) -> str:
   """Convert a front matter date value to a human-readable string.
 
   Accepts either a YYYY-MM-DD string or a datetime.date object (as parsed by
   PyYAML). Returns a formatted string like "January 01, 2025", or an empty
-  string if the value is absent or malformed. Malformed values are silently
-  ignored — callers should warn the user separately if needed.
+  string if the value is absent or malformed.
   """
-  d = extract_date_dt(fm_date_raw, tz_name=tz_name)
+  d = extract_date_dt(fm_date_raw, tz_name=tz_name, source_path=source_path)
   return d.strftime("%B %d, %Y") if d else ""
 
 
-def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None) -> datetime | None:
+def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None, source_path: Optional[Path] = None) -> datetime | None:
   """Extract a datetime object from a front matter date field.
 
   Accepts either a YYYY-MM-DD string or a datetime.date object (as parsed by
-  PyYAML). Returns a datetime object localized to tz_name, or None if the value 
+  PyYAML). Returns a datetime object localized to tz_name, or None if the value
   is absent or malformed.
   """
   if fm_date_raw is None:
@@ -152,7 +151,9 @@ def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None) -> datetime | No
       return dt.replace(tzinfo=tz)
     # PyYAML parses YYYY-MM-DD as datetime.date
     return datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day, tzinfo=tz)
-  except (ValueError, AttributeError, TypeError):
+  except (ValueError, AttributeError, TypeError) as exc:
+    loc = f" in {source_path}" if source_path else ""
+    print(f"Warning: invalid date '{fm_date_raw}'{loc} — using fallback.", file=sys.stderr)
     return None
 
 
