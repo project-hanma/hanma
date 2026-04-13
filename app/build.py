@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
+import concurrent.futures
 import string
 import sys
 from datetime import datetime
@@ -29,12 +30,37 @@ from app.manifest import (
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
 from app.parsing import (
-  collect_page_info, parse_date_field, extract_date_dt,
+  parse_front_matter, extract_title, extract_description,
+  parse_date_field, extract_date_dt,
   get_localized_now, localize_datetime
 )
 from app.sidecar import build_sitemap_xml, build_search_json
 from app.highlight import HIGHLIGHT_CSS
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
+
+
+def _process_page_worker(md_path: Path, out_html: Path, site_name: str,
+             nav_pages: list, theme_name: str, themes_dir: Path,
+             tags_out_dir: Path, base_url: str, output_root: Path,
+             layout: str, posts_out: Optional[Path], posts_label: str,
+             sanitize: bool, timezone: Optional[str],
+             recent_posts: list, front: dict, body: str) -> Path:
+  """Worker function for ProcessPoolExecutor to convert one page."""
+  # We must reload the template in the worker because Jinja2 Templates are not picklable
+  template, _ = _load_theme_impl(theme_name, themes_dir)
+  return convert_md_to_html(
+    md_path, out_html, site_name,
+    nav_pages=nav_pages, template=template,
+    tags_out_dir=tags_out_dir,
+    base_url=base_url, output_root=output_root,
+    layout=layout,
+    posts_out=posts_out, posts_label=posts_label,
+    sanitize=sanitize,
+    timezone=timezone,
+    recent_posts=recent_posts,
+    front_matter=front,
+    body=body
+  )
 
 
 def _load_mtimes(theme_dir: Path, config_path: Optional[Path]) -> tuple[float, float]:
@@ -62,12 +88,18 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
   search_entries = []
 
   for md_path in files:
-    title, description, front, md_text = collect_page_info(md_path)
+    md_text = md_path.read_text(encoding="utf-8")
     md_hash = compute_text_hash(md_text)
+    front, body = parse_front_matter(md_text, source_path=md_path)
+    
     if front.get("draft") is True:
       print(f"  [draft] skipping {md_path.name}")
       drafts += 1
       continue
+
+    fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
+    title = front.get("title") or extract_title(body, fallback)
+    description = front.get("description") or extract_description(body)
     
     rel = md_path.relative_to(root)
     if md_path.stem.lower() == "index" and len(rel.parts) == 1:
@@ -81,7 +113,7 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
     raw_si = front.get("sort_index")
     sort_index = int(raw_si) if raw_si is not None else None
 
-    all_files.append((md_path, out_html, title, layout, sort_index, md_text, md_hash))
+    all_files.append((md_path, out_html, title, layout, sort_index, front, body, md_hash))
 
     fm_tags = front.get("tags", [])
     if isinstance(fm_tags, list):
@@ -115,6 +147,76 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
   all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
   
   return all_files, drafts, tags_map, dated_pages, search_entries
+
+
+def _generate_sitemap_and_search(all_files: list, output_dir: Path,
+                  base_url: str, search_entries: list) -> None:
+  """Generate sitemap.xml and search.json."""
+  if base_url:
+    sitemap_pages = []
+    for _, out_html, *rest in all_files:
+      try:
+        mtime = out_html.stat().st_mtime
+        lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+      except OSError:
+        lastmod = datetime.now().strftime("%Y-%m-%d")
+      sitemap_pages.append((out_html, lastmod))
+    sitemap_path = build_sitemap_xml(sitemap_pages, output_dir, base_url)
+    if sitemap_path:
+      print(f"  [sitemap] sitemap.xml  ({len(sitemap_pages)} URL(s))")
+
+  # ── Generate search.json ──────────────────────────────────────────────
+  build_search_json(search_entries, output_dir, base_url)
+  print(f"  [search] search.json  ({len(search_entries)} entry/entries)")
+
+
+def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
+             nav_pages: list, template, base_url: str, output_dir: Path,
+             nav_posts_out: Optional[Path], posts_label: str,
+             recent_posts: list) -> int:
+  """Generate tag index pages and return error count."""
+  errors = 0
+
+  def _tag_sort_key(entry):
+    _, _, date_str = entry
+    if date_str:
+      try:
+        return (0, datetime.strptime(date_str, "%B %d, %Y"))
+      except ValueError:
+        print(f"Warning: malformed internal date '{date_str}' in tag sort", file=sys.stderr)
+    return (1, datetime.min)
+
+  for tag, tag_pages in tags_map.items():
+    tag_out = tag_out_paths[tag]
+    tag_pages_sorted = sorted(tag_pages, key=_tag_sort_key, reverse=True)
+    try:
+      build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
+              base_url=base_url, output_root=output_dir,
+              posts_out=nav_posts_out, posts_label=posts_label,
+              recent_posts=recent_posts)
+      print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
+    except Exception as exc:
+      print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
+      errors += 1
+  return errors
+
+
+def _prepare_output(output_dir: Path, theme_dir: Path, root: Path, expected_html: set[Path]) -> None:
+  """Prepare output directory: create, copy assets, and clean stale files."""
+  output_dir.mkdir(parents=True, exist_ok=True)
+  copy_theme_assets(theme_dir, output_dir)
+  pygments_path = output_dir / _CSS_SUBDIR / "pygments.css"
+  pygments_path.parent.mkdir(parents=True, exist_ok=True)
+  pygments_path.write_text(HIGHLIGHT_CSS, encoding="utf-8")
+  copy_static_assets(root, output_dir)
+  if output_dir.is_dir():
+    stale = clean_stale_html(output_dir, expected_html)
+    for path in stale:
+      try:
+        rel = path.relative_to(output_dir)
+      except ValueError:
+        rel = path
+      print(f"  [clean] removed stale {rel}")
 
 
 def _run_build(root: Path, output_dir: Path, site_name: str,
@@ -169,20 +271,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   nav_posts_out = posts_out_path if has_posts_listing else None
 
   if not dry_run:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    copy_theme_assets(theme_dir, output_dir)
-    pygments_path = output_dir / _CSS_SUBDIR / "pygments.css"
-    pygments_path.parent.mkdir(parents=True, exist_ok=True)
-    pygments_path.write_text(HIGHLIGHT_CSS, encoding="utf-8")
-    copy_static_assets(root, output_dir)
-    if output_dir.is_dir():
-      stale = clean_stale_html(output_dir, expected_html)
-      for path in stale:
-        try:
-          rel = path.relative_to(output_dir)
-        except ValueError:
-          rel = path
-        print(f"  [clean] removed stale {rel}")
+    _prepare_output(output_dir, theme_dir, root, expected_html)
 
   ok, errors, skipped = 0, 0, 0
   recent_posts = [
@@ -192,8 +281,12 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 
   nav_sig = compute_nav_signature(nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts) if (nav_pages or nav_posts_out) else ""
 
+  theme_name = theme_dir.name
+  themes_dir = theme_dir.parent
+  
+  tasks = []
   for entry in all_files:
-    md_path, out_html, _title, layout, _si, md_text, md_hash = entry
+    md_path, out_html, _title, layout, _si, front, body, md_hash = entry
     try:
       rel = md_path.relative_to(root)
     except ValueError:
@@ -215,28 +308,38 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
       print(f"  [skip]  {rel}  (unchanged)")
       skipped += 1
       ok += 1
-      continue
-
-    try:
-      out = convert_md_to_html(
-        md_path, out_html, site_name,
-        nav_pages=nav_pages, template=template,
-        tags_out_dir=tags_out_dir,
-        base_url=base_url, output_root=output_dir,
-        layout=layout,
-        posts_out=nav_posts_out, posts_label=posts_label,
-        sanitize=sanitize,
-        timezone=timezone,
-        recent_posts=recent_posts,
-        md_text=md_text,
-      )
-      print(f"  ✓  {rel}  →  {out}")
-      ok += 1
       if incremental and manifest_path is not None:
         manifest[str(md_path)] = md_hash
-    except Exception as exc:
-      print(f"  ✗  {rel}  →  ERROR: {exc}")
-      errors += 1
+      continue
+
+    tasks.append((
+      _process_page_worker,
+      (
+        md_path, out_html, site_name, nav_pages, theme_name, themes_dir,
+        tags_out_dir, base_url, output_dir, layout, nav_posts_out, posts_label,
+        sanitize, timezone, recent_posts, front, body
+      ),
+      rel, md_hash
+    ))
+
+  if tasks:
+    # Use max_workers=None (default) to use all CPUs
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+      future_to_info = {
+        executor.submit(fn, *args): (rel, md_path, md_hash)
+        for fn, args, rel, md_hash in tasks
+      }
+      for future in concurrent.futures.as_completed(future_to_info):
+        rel, md_path, md_hash = future_to_info[future]
+        try:
+          out = future.result()
+          print(f"  ✓  {rel}  →  {out}")
+          ok += 1
+          if incremental and manifest_path is not None:
+            manifest[str(md_path)] = md_hash
+        except Exception as exc:
+          print(f"  ✗  {rel}  →  ERROR: {exc}")
+          errors += 1
 
   if dry_run:
     if tags_map:
@@ -255,27 +358,10 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     return ok, errors, skipped
 
   # ── Generate tag index pages ──────────────────────────────────────────
-  def _tag_sort_key(entry):
-    _, _, date_str = entry
-    if date_str:
-      try:
-        return (0, datetime.strptime(date_str, "%B %d, %Y"))
-      except ValueError:
-        print(f"Warning: malformed internal date '{date_str}' in tag sort", file=sys.stderr)
-    return (1, datetime.min)
-
-  for tag, tag_pages in tags_map.items():
-    tag_out = tag_out_paths[tag]
-    tag_pages_sorted = sorted(tag_pages, key=_tag_sort_key, reverse=True)
-    try:
-      build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
-              base_url=base_url, output_root=output_dir,
-              posts_out=nav_posts_out, posts_label=posts_label,
-              recent_posts=recent_posts)
-      print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
-    except Exception as exc:
-      print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
-      errors += 1
+  errors += _generate_tag_indices(
+    tags_map, tag_out_paths, site_name, nav_pages, template,
+    base_url, output_dir, nav_posts_out, posts_label, recent_posts
+  )
 
   # ── Generate posts listing page ───────────────────────────────────────
   if has_posts_listing:
@@ -291,23 +377,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   elif posts_collision:
     print("  [posts] skipped: posts/index.md exists as source file")
 
-  # ── Generate sitemap.xml ──────────────────────────────────────────────
-  if base_url:
-    sitemap_pages = []
-    for _, out_html, *rest in all_files:
-      try:
-        mtime = out_html.stat().st_mtime
-        lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-      except OSError:
-        lastmod = datetime.now().strftime("%Y-%m-%d")
-      sitemap_pages.append((out_html, lastmod))
-    sitemap_path = build_sitemap_xml(sitemap_pages, output_dir, base_url)
-    if sitemap_path:
-      print(f"  [sitemap] sitemap.xml  ({len(sitemap_pages)} URL(s))")
-
-  # ── Generate search.json ──────────────────────────────────────────────
-  search_path = build_search_json(search_entries, output_dir, base_url)
-  print(f"  [search] search.json  ({len(search_entries)} entry/entries)")
+  # ── Generate sitemap.xml & search.json ────────────────────────────────
+  _generate_sitemap_and_search(all_files, output_dir, base_url, search_entries)
 
   if incremental and manifest_path is not None:
     manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime

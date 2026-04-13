@@ -43,7 +43,7 @@ def get_nav_data(current_out_html: Path,
 
   def _rel_url(target: Path) -> str:
     try:
-      return os.path.relpath(target, current_out_html.parent)
+      return os.path.relpath(target, current_out_html.parent).replace(os.sep, "/")
     except ValueError:
       return target.as_posix()
 
@@ -173,46 +173,3 @@ def get_nav_data(current_out_html: Path,
     items.append(item)
 
   return items
-
-
-def build_nav_html(current_out_html: Path,
-         nav_pages: list[tuple],
-         output_root: Optional[Path] = None,
-         posts_out: Optional[Path] = None,
-         posts_label: str = "Blog",
-         recent_posts: Optional[list[tuple]] = None) -> str:
-  """Build the <ul> content for the sticky nav bar. (Legacy string-builder)"""
-  items = get_nav_data(current_out_html, nav_pages, output_root, posts_out, posts_label, recent_posts)
-  if not items:
-    return ""
-
-  def _render_item(item: dict) -> str:
-    css = ' class="nav-current"' if item["is_current"] else ""
-    aria = ' aria-current="page"' if item["is_current"] else ""
-    title = html.escape(item["title"])
-    url = html.escape(item["url"], quote=True) if item["url"] else None
-
-    if item.get("children"):
-      drop_html = "\n    <ul>\n"
-      for child in item["children"]:
-        child_url = html.escape(child["url"], quote=True)
-        child_title = html.escape(child["title"])
-        if child.get("is_more_link"):
-          drop_html += f'      <li><span class="nav-more-posts-sep"></span><a href="{child_url}"><span class="nav-more-posts">{child_title}</span></a></li>\n'
-        else:
-          cur_style = ' style="font-weight:600;color:var(--accent)"' if child["is_current"] else ""
-          drop_html += f'      <li><a href="{child_url}"><span{cur_style}>{child_title}</span></a></li>\n'
-      drop_html += "    </ul>"
-      
-      if url:
-        return f'  <li{css}>\n    <a href="{url}"{aria}>{title}</a>{drop_html}\n  </li>'
-      else:
-        return f'  <li{css}>\n    <span class="nav-folder">{title}</span>{drop_html}\n  </li>'
-    
-    return f'  <li{css}>\n    <a href="{url}"{aria}>{title}</a>\n  </li>'
-
-  html_parts = ["\n<ul>"]
-  for item in items:
-    html_parts.append(_render_item(item))
-  html_parts.append("</ul>\n")
-  return "\n".join(html_parts)

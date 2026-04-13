@@ -49,7 +49,7 @@ To create a custom theme:
 
 ### Custom Navigation Loop
 
-Instead of using the legacy `{{ nav | safe }}` block, you can build your own menu using `nav_items`:
+You can build your menu using `nav_items`:
 
 ```html
 <ul>

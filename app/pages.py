@@ -22,12 +22,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from app.nav import build_nav_html, get_nav_data
+from app.nav import get_nav_data
 
 
 def _normalize_tag(tag: str) -> str:
   """Produce a filesystem-safe slug from a tag name."""
   return re.sub(r"[^\w-]", "-", str(tag).lower()).strip("-")
+
+
+def _rel_url(target: Path, base: Path) -> str:
+  """Return a relative URL string from base directory to target file."""
+  try:
+    return os.path.relpath(target, base).replace(os.sep, "/")
+  except ValueError:
+    return target.as_posix()
 
 
 def _sitemap_link(out_path: Path, output_root: Optional[Path], base_url: str) -> str:
@@ -36,11 +44,7 @@ def _sitemap_link(out_path: Path, output_root: Optional[Path], base_url: str) ->
     return ""
   if output_root is None:
     return '<a href="sitemap.xml">Sitemap</a>'
-  try:
-    depth = len(out_path.relative_to(output_root).parts) - 1
-  except ValueError:
-    depth = 0
-  rel = ("../" * depth) + "sitemap.xml"
+  rel = _rel_url(output_root / "sitemap.xml", out_path.parent)
   return f'<a href="{rel}">Sitemap</a>'
 
 
@@ -54,11 +58,7 @@ def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str)
     return base_url.rstrip("/") + "/search.json"
   if output_root is None:
     return "search.json"
-  try:
-    depth = len(out_path.relative_to(output_root).parts) - 1
-  except ValueError:
-    depth = 0
-  return ("../" * depth) + "search.json"
+  return _rel_url(output_root / "search.json", out_path.parent)
 
 
 def _make_generated_page(content_html: str, title: str, description: str,
@@ -72,9 +72,6 @@ def _make_generated_page(content_html: str, title: str, description: str,
              posts_label: str = "Blog",
              recent_posts: Optional[list] = None) -> Path:
   """Render a generated (non-markdown) page using the active theme template."""
-  nav_html = build_nav_html(out_path, nav_pages, output_root=output_root,
-               posts_out=posts_out, posts_label=posts_label,
-               recent_posts=recent_posts)
   nav_items = get_nav_data(out_path, nav_pages, output_root=output_root,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
@@ -95,7 +92,6 @@ def _make_generated_page(content_html: str, title: str, description: str,
     site_name=site_name,
     date_str=now.strftime("%B %d, %Y"),
     content=content_html,
-    nav=nav_html,
     nav_items=nav_items,
     source_file="(generated)",
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
@@ -122,12 +118,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
   safe_tag = html.escape(tag)
   items = []
   for page_html_path, page_title, date_str in pages:
-    try:
-      rel_url = html.escape(
-        os.path.relpath(page_html_path, out_path.parent), quote=True
-      )
-    except ValueError:
-      rel_url = page_html_path.as_posix()
+    rel_url = html.escape(_rel_url(page_html_path, out_path.parent), quote=True)
     safe_title = html.escape(page_title)
     date_span = f' <span class="post-date">{html.escape(date_str)}</span>' if date_str else ""
     items.append(f'  <li><a href="{rel_url}">{safe_title}</a>{date_span}</li>')
@@ -166,12 +157,7 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
 
   items = []
   for page_html_path, page_title, date_dt, description in sorted_pages:
-    try:
-      rel_url = html.escape(
-        os.path.relpath(page_html_path, out_path.parent), quote=True
-      )
-    except ValueError:
-      rel_url = page_html_path.as_posix()
+    rel_url = html.escape(_rel_url(page_html_path, out_path.parent), quote=True)
     safe_title = html.escape(page_title)
 
     # Use a simpler format if it's exactly midnight (likely from YYYY-MM-DD front matter).

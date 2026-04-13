@@ -74,9 +74,10 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
   ] if site_dir.is_dir() else []
   if real_contents:
     if not force:
-      print(f"Error: '{site_dir}' is not empty.")
-      print("Re-run with --force to wipe it and create fresh sample content.")
-      sys.exit(1)
+      raise RuntimeError(
+        f"Error: '{site_dir}' is not empty. "
+        "Re-run with --force to wipe it and create fresh sample content."
+      )
     for item in real_contents:
       if item.is_dir():
         shutil.rmtree(item)

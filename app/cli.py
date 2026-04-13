@@ -28,11 +28,10 @@ from app.convert import convert_md_to_html
 from app.scaffold import init_scaffold
 from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
 from app.watch import watch_and_rebuild
-from app._version import __version__
+from app import __version__, _THEMES_DIR
 
 # Anchor for themes/ and conf/ — same directory as hanma.py since all files are siblings
 _PROJECT_ROOT = Path(__file__).parent.parent
-_THEMES_DIR = _PROJECT_ROOT / "themes"
 _CONF_DIR = _PROJECT_ROOT / "conf"
 
 
@@ -170,7 +169,10 @@ Examples:
 
   if args.init:
     site_dir = Path("site").resolve()
-    init_scaffold(site_dir, force=args.force)
+    try:
+      init_scaffold(site_dir, force=args.force)
+    except RuntimeError as exc:
+      sys.exit(str(exc))
     return
 
   # ── Resolve default path: prefer ./site/, fall back to cwd ──────────────

@@ -54,7 +54,7 @@ except ImportError:
   _BLEACH_AVAILABLE = False
   CSSSanitizer = None
 
-from app.nav import build_nav_html, get_nav_data
+from app.nav import get_nav_data
 from app.pages import _normalize_tag, _search_json_url
 from app.parsing import (
   parse_front_matter, extract_title, extract_description,
@@ -73,7 +73,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             sanitize: bool = False,
             timezone: Optional[str] = None,
             recent_posts: Optional[list] = None,
-            md_text: Optional[str] = None) -> Path:
+            front_matter: Optional[dict] = None,
+            body: Optional[str] = None) -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -87,25 +88,25 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   search_json_url template variables.
   sanitize=True will clean the generated HTML using bleach if available.
   recent_posts is an optional list of (out_html, title) tuples for the nav.
-  md_text, if provided, avoids reading md_path again.
+  front_matter and body, if provided, avoids reading/parsing md_path again.
   """
   if template is None:
     import app as _app
     from app.theme import _load_theme_impl
     template, _ = _load_theme_impl("default", _app._THEMES_DIR)
   
-  if md_text is None:
+  if front_matter is None or body is None:
     md_text = md_path.read_text(encoding="utf-8")
-  front, body = parse_front_matter(md_text, source_path=md_path)
+    front_matter, body = parse_front_matter(md_text, source_path=md_path)
 
   fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
-  title = front.get("title") or extract_title(body, fallback)
-  description = front.get("description") or extract_description(body)
+  title = front_matter.get("title") or extract_title(body, fallback)
+  description = front_matter.get("description") or extract_description(body)
 
   # ── Front matter: author / date / tags ───────────────────────────────────
-  fm_author = str(front.get("author", "")).strip()
-  fm_date_raw = front.get("date")
-  fm_tags = front.get("tags", [])
+  fm_author = str(front_matter.get("author", "")).strip()
+  fm_date_raw = front_matter.get("date")
+  fm_tags = front_matter.get("tags", [])
 
   # Build a human-readable date string from front matter date field
   fm_date_str = parse_date_field(fm_date_raw, tz_name=timezone, source_path=md_path)
@@ -128,7 +129,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   else:
     keywords_meta = ""
 
-  fm_refresh_raw = front.get("refresh")
+  fm_refresh_raw = front_matter.get("refresh")
   try:
     fm_refresh = int(fm_refresh_raw)
   except (TypeError, ValueError):
@@ -187,16 +188,10 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
       if tags_out_dir is not None:
         tag_html_path = tags_out_dir / f"{slug}.html"
         try:
-          tag_url = os.path.relpath(tag_html_path, out_path.parent)
+          tag_url = tag_html_path.relative_to(out_path.parent).as_posix()
         except ValueError:
           tag_url = tag_html_path.as_posix()
       page_tags.append({"name": tag_name, "slug": slug, "url": tag_url})
-
-  nav_html = build_nav_html(out_path, nav_pages or [],
-               output_root=output_root,
-               posts_out=posts_out, posts_label=posts_label,
-               recent_posts=recent_posts)
-  nav_html = _clean_if_needed(nav_html)
 
   nav_items = get_nav_data(out_path, nav_pages or [],
                output_root=output_root,
@@ -238,7 +233,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     site_name=site_name,
     date_str=date_str,
     content=content_html,
-    nav=nav_html,
     nav_items=nav_items,
     page_tags=page_tags,
     author=fm_author,

@@ -35,10 +35,9 @@ _THEMES_DIR = Path(__file__).parent.parent / "themes"
 from app.config import load_site_config
 from app.highlight import HIGHLIGHT_CSS, _build_highlight_css
 from app.parsing import (
-  parse_front_matter, extract_title, extract_description, collect_page_info,
+  parse_front_matter, extract_title, extract_description,
   parse_date_field,
 )
-from app.nav import build_nav_html
 from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
 from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.pages import (

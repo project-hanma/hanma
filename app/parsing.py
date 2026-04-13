@@ -30,9 +30,9 @@ except ImportError:
 try:
   import yaml
 except ImportError:
-  print("Error: 'pyyaml' package not found.")
-  print("Install it with:  pip install pyyaml")
-  sys.exit(1)
+  raise RuntimeError(
+    "Required package 'pyyaml' not found. Install it with:  pip install pyyaml"
+  )
 
 
 def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tuple:
@@ -155,13 +155,3 @@ def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None, source_path: Opt
     loc = f" in {source_path}" if source_path else ""
     print(f"Warning: invalid date '{fm_date_raw}'{loc} — using fallback.", file=sys.stderr)
     return None
-
-
-def collect_page_info(md_path: Path) -> tuple[str, str, dict, str]:
-  """Return (title, description, front_matter, md_text) for a Markdown file."""
-  md_text = md_path.read_text(encoding="utf-8")
-  front, body = parse_front_matter(md_text, source_path=md_path)
-  fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
-  title = front.get("title") or extract_title(body, fallback)
-  description = front.get("description") or extract_description(body)
-  return title, description, front, md_text

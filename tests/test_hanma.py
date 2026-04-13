@@ -1515,7 +1515,7 @@ class TestInitScaffold:
     site_dir = tmp_path / "site"
     site_dir.mkdir()
     (site_dir / "index.md").write_text("existing")
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError):
       hanma.init_scaffold(site_dir, force=False)
     # existing file must survive untouched
     assert (site_dir / "index.md").read_text() == "existing"
@@ -1524,7 +1524,7 @@ class TestInitScaffold:
     site_dir = tmp_path / "site"
     site_dir.mkdir()
     (site_dir / "unrelated.txt").write_text("keep me")
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError):
       hanma.init_scaffold(site_dir, force=False)
     assert (site_dir / "unrelated.txt").exists()
 
