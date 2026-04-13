@@ -168,11 +168,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
   content_html = _clean_if_needed(content_html)
   author_line = _clean_if_needed(author_line)
-  title = _clean_if_needed(title)
-  description = _clean_if_needed(description)
-  author_meta = _clean_if_needed(author_meta)
-  keywords_meta = _clean_if_needed(keywords_meta)
-  refresh_meta = _clean_if_needed(refresh_meta)
 
   # Build structured tags for templates
   page_tags = []
