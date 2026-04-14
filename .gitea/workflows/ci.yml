@@ -37,9 +37,6 @@ jobs:
       - name: Cleanup Stale Artifacts
         run: rm -rfv *
 
-      - name: Cleanup Build Cache
-        run: docker system prune -af
-
       - name: Environment Check
         run: |
           echo "BUILD_USER: $(whoami)" && echo
@@ -76,8 +73,10 @@ jobs:
           docker push ${IMAGE_FULL_PATH}
 
       - name: Cleanup Local Image
+        if: always()
         run: |
-          docker rmi ${IMAGE_FULL_PATH}
+          docker rmi ${IMAGE_FULL_PATH} || true
+          docker image prune -f
 
       - name: Cleanup Docker Login
         if: always()
