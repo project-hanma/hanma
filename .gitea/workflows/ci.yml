@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "feat/**"]
+    branches: ["**"]
   pull_request:
     branches: ["develop"]
 
@@ -54,7 +54,7 @@ jobs:
 
       - name: Clone Repository
         run: |
-          git clone https://gitea.thezengarden.net/Python/hanma.git
+          git clone ${{ github.server_url }}/${{ github.repository }}.git
           cd hanma
           git checkout ${{ github.head_ref || github.ref_name }}
 
@@ -62,19 +62,19 @@ jobs:
         run: |
           # Sanitize repository name
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          
+
           # Use base_ref for PRs (target branch) or ref_name for pushes
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             TAG_SAFE=$(echo "${{ github.base_ref }}" | tr '[:upper:]' '[:lower:]')
           else
             TAG_SAFE=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]' | sed 's/\//-/g')
           fi
-          
+
           # Map 'main' branch to 'latest' tag
           if [ "$TAG_SAFE" = "main" ]; then
             TAG_SAFE="latest"
           fi
-          
+
           echo "IMAGE_FULL_PATH=${{ vars.REGISTRY }}/${REPO_LOWER}:${TAG_SAFE}" >> $GITHUB_ENV
 
       - name: Docker Login
