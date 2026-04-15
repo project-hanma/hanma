@@ -19,12 +19,14 @@
       <a class="site-name" href="/">{{ site_name }}</a>
       <span class="header-sep"></span>
       <span class="site-meta">{{ date_str }}</span>
+      {% if search_json_url %}
       <div class="search-wrap">
         <input class="search-input" id="searchInput" type="search"
                placeholder="Search…" aria-label="Search site"
                data-search-url="{{ search_json_url }}" />
         <ul class="search-dropdown" id="searchDropdown" role="listbox"></ul>
       </div>
+      {% endif %}
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
         <span class="icon" id="themeIcon">&#9790;</span>
         <span id="themeLabel">Dark</span>
@@ -83,7 +85,7 @@
 </footer>
 
 <script src="/assets/scripts/theme-toggle.js"></script>
-<script src="/assets/scripts/search.js"></script>
+{% if search_json_url %}<script src="/assets/scripts/search.js"></script>{% endif %}
 
 </body>
 </html>

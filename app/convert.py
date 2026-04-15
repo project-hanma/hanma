@@ -74,7 +74,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             timezone: Optional[str] = None,
             recent_posts: Optional[list] = None,
             front_matter: Optional[dict] = None,
-            body: Optional[str] = None) -> Path:
+            body: Optional[str] = None,
+            search_enabled: bool = True) -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -206,7 +207,11 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   source_rel = md_path.name
 
   sitemap_link = _clean_if_needed('<a href="sitemap.xml">Sitemap</a>' if base_url else "")
-  search_url = _clean_if_needed(_search_json_url(out_path, output_root, base_url))
+  
+  if search_enabled:
+    search_url = _clean_if_needed(_search_json_url(out_path, output_root, base_url))
+  else:
+    search_url = ""
 
   # Logic for browser <title>:
   # 1. Homepage (root index.html) shows only site_name

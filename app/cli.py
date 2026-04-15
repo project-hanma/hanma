@@ -230,6 +230,7 @@ Examples:
   cfg_host        = site_config.get("host",        "127.0.0.1")
   cfg_watch       = site_config.get("watch",       False)
   cfg_incremental = site_config.get("incremental", False)
+  cfg_search      = site_config.get("search",      True)
   cfg_sanitize    = site_config.get("sanitize",    False)
   effective_timezone = site_config.get("timezone",    None)
 
@@ -247,6 +248,7 @@ Examples:
   effective_host = args.host if args.host is not None else cfg_host
   effective_watch       = args.watch       or cfg_watch
   effective_incremental = args.incremental or cfg_incremental
+  effective_search      = cfg_search
   effective_sanitize    = args.sanitize    or cfg_sanitize
 
   # ── Resolve output directory ───────────────────────────────────────────
@@ -274,7 +276,7 @@ Examples:
       return
     out_html.parent.mkdir(parents=True, exist_ok=True)
     copy_theme_assets(theme_dir, output_dir)
-    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template, sanitize=effective_sanitize, timezone=effective_timezone)
+    convert_md_to_html(target, out_html, site_name, nav_pages=[], template=theme_template, sanitize=effective_sanitize, timezone=effective_timezone, search_enabled=effective_search)
     print(f"  ✓  {target.name}  →  {out_html}")
     print(f"\nDone.  1 converted, 0 errors.")
     if effective_serve:
@@ -303,6 +305,7 @@ Examples:
     config_path=config_path,
     sanitize=effective_sanitize,
     timezone=effective_timezone,
+    search_enabled=effective_search,
   )
 
   if args.dry_run:
@@ -317,6 +320,7 @@ Examples:
       "manifest_path": manifest_path,
       "sanitize": effective_sanitize,
       "timezone": effective_timezone,
+      "search_enabled": effective_search,
     }
     if effective_serve:
       watch_thread = threading.Thread(

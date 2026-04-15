@@ -32,6 +32,9 @@ theme: default
 # Only regenerate pages whose source file has changed since the last build.
 # incremental: false
 
+# Enable search functionality and show the search box.
+search: true
+
 # Sanitize the generated HTML using 'bleach' if available.
 # sanitize: false
 

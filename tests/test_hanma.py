@@ -1224,6 +1224,21 @@ class TestSearchIndex:
     result = _json.loads((tmp_path / "search.json").read_text())
     assert result[0]["title"] == "T"
 
+  def test_search_disabled(self, tmp_path):
+    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write(tmp_path / "hanma.yml", "search: false")
+    out_dir = tmp_path / "out"
+    run(str(tmp_path), "--output", str(out_dir), "--config", str(tmp_path / "hanma.yml"))
+    
+    # 1. search.json should NOT exist
+    assert not (out_dir / "search.json").exists()
+    
+    # 2. index.html should NOT contain search-wrap or search.js
+    index_html = (out_dir / "page.html").read_text()
+    assert "search-wrap" not in index_html
+    assert "search.js" not in index_html
+    assert "data-search-url" not in index_html
+
 
 # ===========================================================================
 # 26. Post listing page
