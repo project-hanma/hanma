@@ -187,11 +187,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
       slug = _normalize_tag(tag_name)
       tag_url = None
       if tags_out_dir is not None:
-        tag_html_path = tags_out_dir / f"{slug}.html"
-        try:
-          tag_url = tag_html_path.relative_to(out_path.parent).as_posix()
-        except ValueError:
-          tag_url = tag_html_path.as_posix()
+        tag_url = f"tags/{slug}.html"
       page_tags.append({"name": tag_name, "slug": slug, "url": tag_url})
 
   nav_items = get_nav_data(out_path, nav_pages or [],
@@ -220,6 +216,15 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   is_root_index = output_root and out_path.resolve() == (output_root / "index.html").resolve()
   titles_match = site_name and title.lower() == site_name.lower()
 
+  if output_root:
+    root_rel = os.path.relpath(output_root, out_path.parent).replace(os.sep, "/")
+    if root_rel == ".":
+      root_rel = ""
+    else:
+      root_rel = root_rel.rstrip("/") + "/"
+  else:
+    root_rel = ""
+
   if site_name:
     if is_root_index or titles_match:
       display_title = site_name
@@ -239,6 +244,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     date_str=date_str,
     content=content_html,
     nav_items=nav_items,
+    root_rel=root_rel,
     page_tags=page_tags,
     author=fm_author,
     page_date=fm_date_str,
