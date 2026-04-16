@@ -7,16 +7,16 @@
   <meta name="description" content="{{ description }}" />
   <meta name="generator" content="hanma" />
   {{ author_meta | safe }}{{ keywords_meta | safe }}{{ refresh_meta | safe }}<!-- Apply saved theme before first paint to avoid flash -->
-  <link rel="stylesheet" href="/assets/css/style.css" />
-  <link rel="stylesheet" href="/assets/css/pygments.css" />
-  <script src="/assets/scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/style.css" />
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/pygments.css" />
+  <script src="{{ root_rel }}assets/scripts/theme-init.js"></script>
 </head>
 <body>
 
 <div class="sticky-shell">
   <header class="site-header">
     <div class="site-header-inner">
-      <a class="site-name" href="/">{{ site_name }}</a>
+      <a class="site-name" href="{{ root_rel or '/' }}">{{ site_name }}</a>
       <span class="header-sep"></span>
       <span class="site-meta">{{ date_str }}</span>
       {% if search_json_url %}
@@ -62,7 +62,7 @@
     <div class="page-tags">
       {% for tag in page_tags %}
       {% if tag.url %}
-      <a class="tag" href="{{ tag.url }}">{{ tag.name }}</a>
+      <a class="tag" href="{{ root_rel }}{{ tag.url }}">{{ tag.name }}</a>
       {% else %}
       <span class="tag">{{ tag.name }}</span>
       {% endif %}
@@ -84,8 +84,8 @@
   <p>{{ sitemap_link | safe }}</p>
 </footer>
 
-<script src="/assets/scripts/theme-toggle.js"></script>
-{% if search_json_url %}<script src="/assets/scripts/search.js"></script>{% endif %}
+<script src="{{ root_rel }}assets/scripts/theme-toggle.js"></script>
+{% if search_json_url %}<script src="{{ root_rel }}assets/scripts/search.js"></script>{% endif %}
 
 </body>
 </html>

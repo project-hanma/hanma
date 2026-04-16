@@ -9,7 +9,8 @@ def write(path, content):
   path.write_text(content, encoding="utf-8")
 
 def run(src, *args):
-  cmd = ["python3", str(Path(__file__).parent.parent / "hanma.py"), src] + list(args)
+  import sys
+  cmd = [sys.executable, str(Path(__file__).parent.parent / "hanma.py"), src] + list(args)
   return subprocess.run(cmd, capture_output=True, text=True)
 
 def test_recent_posts_dropdown(tmp_path):

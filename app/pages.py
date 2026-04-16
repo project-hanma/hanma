@@ -83,6 +83,15 @@ def _make_generated_page(content_html: str, title: str, description: str,
   else:
     display_title = site_name or title
 
+  if output_root:
+    root_rel = os.path.relpath(output_root, out_path.parent).replace(os.sep, "/")
+    if root_rel == ".":
+      root_rel = ""
+    else:
+      root_rel = root_rel.rstrip("/") + "/"
+  else:
+    root_rel = ""
+
   page_html = template.render(
     title=display_title,
     description=description,
@@ -94,6 +103,7 @@ def _make_generated_page(content_html: str, title: str, description: str,
     date_str=now.strftime("%B %d, %Y"),
     content=content_html,
     nav_items=nav_items,
+    root_rel=root_rel,
     source_file="(generated)",
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
     sitemap_link=sitemap_link,
