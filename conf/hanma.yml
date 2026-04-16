@@ -3,7 +3,7 @@
 # Comment out any line to revert to the built-in default for that setting.
 
 # Site name shown in the page header
-name: Blog
+name: Hanma
 
 # Base URL for sitemap.xml and absolute URLs in search.json.
 # Leave empty to use relative URLs (sitemap.xml will not be generated).
