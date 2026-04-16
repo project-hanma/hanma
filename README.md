@@ -17,6 +17,17 @@ It builds your blog. That's mostly it.
 - **Fully Extensible**: Self-contained theme system and flexible YAML front matter.
 - **Production Ready**: Syntax highlighting (Pygments), sitemaps, and optional HTML sanitization.
 
+## Screenshots
+
+<p align="center">
+  <img src="assets/hanma_home_light.png" alt="Home Light" width="400" />
+  <img src="assets/hanma_home_dark.png" alt="Home Dark" width="400" />
+</p>
+<p align="center">
+  <img src="assets/hanma_blog_light.png" alt="Blog Light" width="400" />
+  <img src="assets/hanma_blog_dark.png" alt="Blog Dark" width="400" />
+</p>
+
 ## Quick Start
 
 ### 1. Requirements & Setup
