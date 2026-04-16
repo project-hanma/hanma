@@ -195,8 +195,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
 
-  date_str = get_localized_now(timezone).strftime("%B %d, %Y")
-
   mtime_naive = datetime.fromtimestamp(md_path.stat().st_mtime)
   mtime = localize_datetime(mtime_naive, tz_name=timezone)
   last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
@@ -241,7 +239,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     refresh_meta=refresh_meta,
     author_line=author_line,
     site_name=site_name,
-    date_str=date_str,
     content=content_html,
     nav_items=nav_items,
     root_rel=root_rel,

@@ -34,7 +34,6 @@ To create a custom theme:
 | `title` | string | Browser title |
 | `description` | string | Page description (meta) |
 | `site_name` | string | Site name from `--name` or config |
-| `date_str` | string | Today's date |
 | `content` | string | **(HTML)** Rendered page content (use `{{ content | safe }}`) |
 | `nav_items` | list | Structured navigation data for custom loops |
 | `page_tags` | list | Structured list of tags for the current page: `[{"name": "...", "url": "..."}]` |
