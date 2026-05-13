@@ -23,38 +23,10 @@ import importlib
 import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-SSG = Path(__file__).parent.parent / "hanma.py"
-
-
-def run(*args, cwd=None, expect_ok=True):
-  """Run hanma.py with the given arguments and return CompletedProcess."""
-  result = subprocess.run(
-    [sys.executable, str(SSG), *args],
-    capture_output=True,
-    text=True,
-    cwd=str(cwd) if cwd else None,
-  )
-  if expect_ok and result.returncode != 0:
-    pytest.fail(
-      f"hanma.py exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
-  return result
-
-
-def write(path: Path, content: str) -> Path:
-  path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(textwrap.dedent(content))
-  return path
-
+from tests.helpers import run_hanma, write_file
 
 # ---------------------------------------------------------------------------
 # Import the module under test so we can call functions directly
@@ -66,6 +38,8 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
   sys.path.insert(0, str(_PROJECT_ROOT))
 import app as hanma
+
+SSG = Path(__file__).parent.parent / "hanma.py"
 
 
 # ===========================================================================
@@ -161,45 +135,45 @@ class TestExtractDescription:
 
 class TestFindMarkdownFiles:
   def test_discovers_md_files(self, tmp_path):
-    write(tmp_path / "a.md", "# A")
-    write(tmp_path / "b.md", "# B")
+    write_file(tmp_path / "a.md", "# A")
+    write_file(tmp_path / "b.md", "# B")
     found = hanma.find_markdown_files(tmp_path)
     names = {p.name for p in found}
     assert names == {"a.md", "b.md"}
 
   def test_recurses_into_subdirectories(self, tmp_path):
-    write(tmp_path / "sub" / "deep.md", "# Deep")
+    write_file(tmp_path / "sub" / "deep.md", "# Deep")
     found = hanma.find_markdown_files(tmp_path)
     assert any(p.name == "deep.md" for p in found)
 
   def test_skips_dotdirs(self, tmp_path):
-    write(tmp_path / ".hidden" / "secret.md", "# Secret")
-    write(tmp_path / "visible.md", "# Visible")
+    write_file(tmp_path / ".hidden" / "secret.md", "# Secret")
+    write_file(tmp_path / "visible.md", "# Visible")
     found = hanma.find_markdown_files(tmp_path)
     assert all(p.name != "secret.md" for p in found)
 
   def test_skips_readme(self, tmp_path):
-    write(tmp_path / "README.md", "# Readme")
-    write(tmp_path / "page.md", "# Page")
+    write_file(tmp_path / "README.md", "# Readme")
+    write_file(tmp_path / "page.md", "# Page")
     found = hanma.find_markdown_files(tmp_path)
     assert all(p.name.lower() != "readme.md" for p in found)
 
   def test_index_included_in_results(self, tmp_path):
-    write(tmp_path / "alpha.md", "# Alpha")
-    write(tmp_path / "index.md", "# Home")
-    write(tmp_path / "zebra.md", "# Zebra")
+    write_file(tmp_path / "alpha.md", "# Alpha")
+    write_file(tmp_path / "index.md", "# Home")
+    write_file(tmp_path / "zebra.md", "# Zebra")
     found = hanma.find_markdown_files(tmp_path)
     stems = [p.stem.lower() for p in found]
     assert "index" in stems
 
   def test_accepts_markdown_extension(self, tmp_path):
-    write(tmp_path / "page.markdown", "# Page")
+    write_file(tmp_path / "page.markdown", "# Page")
     found = hanma.find_markdown_files(tmp_path)
     assert any(p.suffix == ".markdown" for p in found)
 
   def test_ignores_non_markdown_files(self, tmp_path):
-    write(tmp_path / "data.json", '{"key": "value"}')
-    write(tmp_path / "page.md", "# Page")
+    write_file(tmp_path / "data.json", '{"key": "value"}')
+    write_file(tmp_path / "page.md", "# Page")
     found = hanma.find_markdown_files(tmp_path)
     assert all(p.suffix in {".md", ".markdown"} for p in found)
 
@@ -211,27 +185,27 @@ class TestFindMarkdownFiles:
 
 class TestConvertMdToHtml:
   def test_produces_html_file(self, tmp_path):
-    src = write(tmp_path / "page.md", "# Hello\n\nWorld.")
+    src = write_file(tmp_path / "page.md", "# Hello\n\nWorld.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "Test Site", nav_pages=[])
     assert out.exists()
 
   def test_output_contains_title(self, tmp_path):
-    src = write(tmp_path / "page.md", "# My Page\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# My Page\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "Test Site", nav_pages=[])
     html = out.read_text()
     assert "My Page" in html
 
   def test_output_contains_site_name(self, tmp_path):
-    src = write(tmp_path / "page.md", "# Page\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "MySite", nav_pages=[])
     html = out.read_text()
     assert "MySite" in html
 
   def test_markdown_rendered_to_html_tags(self, tmp_path):
-    src = write(tmp_path / "page.md", "# Title\n\n**bold** and *italic*.")
+    src = write_file(tmp_path / "page.md", "# Title\n\n**bold** and *italic*.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     html = out.read_text()
@@ -239,14 +213,14 @@ class TestConvertMdToHtml:
     assert "<em>" in html
 
   def test_fenced_code_block_highlighted(self, tmp_path):
-    src = write(tmp_path / "code.md", "# Code\n\n```python\nprint('hi')\n```\n")
+    src = write_file(tmp_path / "code.md", "# Code\n\n```python\nprint('hi')\n```\n")
     out = tmp_path / "code.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     html = out.read_text()
     assert "<code" in html.lower()
 
   def test_table_rendered(self, tmp_path):
-    src = write(
+    src = write_file(
       tmp_path / "table.md",
       """\
       # Table
@@ -262,13 +236,13 @@ class TestConvertMdToHtml:
     assert "<table" in html
 
   def test_creates_parent_directories(self, tmp_path):
-    src = write(tmp_path / "src" / "sub" / "page.md", "# Deep\n\nContent.")
+    src = write_file(tmp_path / "src" / "sub" / "page.md", "# Deep\n\nContent.")
     out = tmp_path / "dist" / "sub" / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     assert out.exists()
 
   def test_self_contained_no_external_links(self, tmp_path):
-    src = write(tmp_path / "page.md", "# Page\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     html = out.read_text()
@@ -284,23 +258,23 @@ class TestConvertMdToHtml:
 
 class TestCLIInPlace:
   def test_converts_single_file(self, tmp_path):
-    src = write(tmp_path / "page.md", "# Page\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(src), "--output", str(out_dir))
+    run_hanma(str(src), "--output", str(out_dir))
     assert (out_dir / "page.html").exists()
 
   def test_converts_directory(self, tmp_path):
-    write(tmp_path / "a.md", "# A\n\nContent.")
-    write(tmp_path / "b.md", "# B\n\nContent.")
+    write_file(tmp_path / "a.md", "# A\n\nContent.")
+    write_file(tmp_path / "b.md", "# B\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "a.html").exists()
     assert (out_dir / "b.html").exists()
 
   def test_recurses_into_subdirs(self, tmp_path):
-    write(tmp_path / "sub" / "page.md", "# Sub\n\nContent.")
+    write_file(tmp_path / "sub" / "page.md", "# Sub\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "sub" / "page.html").exists()
 
   def test_nonexistent_path_exits_nonzero(self):
@@ -330,42 +304,42 @@ class TestCLIOutput:
   def test_html_written_to_output_dir(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "dist"
-    write(src_dir / "page.md", "# Page\n\nContent.")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "page.md", "# Page\n\nContent.")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert (out_dir / "page.html").exists()
 
   def test_source_files_untouched(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "dist"
-    write(src_dir / "page.md", "# Page\n\nContent.")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "page.md", "# Page\n\nContent.")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert not (src_dir / "page.html").exists()
 
   def test_mirrors_subdirectory_structure(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "dist"
-    write(src_dir / "posts" / "hello.md", "# Hello\n\nContent.")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "posts" / "hello.md", "# Hello\n\nContent.")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert (out_dir / "posts" / "hello.html").exists()
 
   def test_output_dir_created_if_missing(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "new_dist"
-    write(src_dir / "page.md", "# Page\n\nContent.")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "page.md", "# Page\n\nContent.")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert out_dir.is_dir()
 
   def test_cleanup_stale_post(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "out"
     # Initial build with a post
-    write(src_dir / "posts" / "post1.md", "# Post 1")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "posts" / "post1.md", "# Post 1")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert (out_dir / "posts" / "post1.html").exists()
     assert (out_dir / "posts" / "index.html").exists()
     # Remove the post and rebuild
     (src_dir / "posts" / "post1.md").unlink()
-    run(str(src_dir), "--output", str(out_dir))
+    run_hanma(str(src_dir), "--output", str(out_dir))
     # The stale post should be removed
     assert not (out_dir / "posts" / "post1.html").exists()
     # The posts index should also be removed if no posts remain
@@ -375,14 +349,14 @@ class TestCLIOutput:
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "out"
     # Initial build with two posts
-    write(src_dir / "posts" / "post1.md", "# Post 1")
-    write(src_dir / "posts" / "post2.md", "# Post 2")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "posts" / "post1.md", "# Post 1")
+    write_file(src_dir / "posts" / "post2.md", "# Post 2")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert (out_dir / "posts" / "post1.html").exists()
     assert (out_dir / "posts" / "post2.html").exists()
     # Remove one post and rebuild
     (src_dir / "posts" / "post1.md").unlink()
-    run(str(src_dir), "--output", str(out_dir))
+    run_hanma(str(src_dir), "--output", str(out_dir))
     # post1 should be gone, post2 should remain
     assert not (out_dir / "posts" / "post1.html").exists()
     assert (out_dir / "posts" / "post2.html").exists()
@@ -393,12 +367,12 @@ class TestCLIOutput:
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "out"
     # Initial build with a page
-    write(src_dir / "page1.md", "# Page 1")
-    run(str(src_dir), "--output", str(out_dir))
+    write_file(src_dir / "page1.md", "# Page 1")
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert (out_dir / "page1.html").exists()
     # Remove the page and rebuild
     (src_dir / "page1.md").unlink()
-    run(str(src_dir), "--output", str(out_dir))
+    run_hanma(str(src_dir), "--output", str(out_dir))
     assert not (out_dir / "page1.html").exists()
 
 
@@ -409,20 +383,20 @@ class TestCLIOutput:
 
 class TestCLIDryRun:
   def test_no_files_written(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
-    run(str(tmp_path), "--dry-run")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
+    run_hanma(str(tmp_path), "--dry-run")
     assert not (tmp_path / "page.html").exists()
 
   def test_lists_files_in_output(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
-    result = run(str(tmp_path), "--dry-run")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
+    result = run_hanma(str(tmp_path), "--dry-run")
     assert "page.md" in result.stdout
 
   def test_dry_run_with_output_dir_no_files_written(self, tmp_path):
     src_dir = tmp_path / "src"
     out_dir = tmp_path / "dist"
-    write(src_dir / "page.md", "# Page\n\nContent.")
-    run(str(src_dir), "--output", str(out_dir), "--dry-run")
+    write_file(src_dir / "page.md", "# Page\n\nContent.")
+    run_hanma(str(src_dir), "--output", str(out_dir), "--dry-run")
     assert not out_dir.exists() or not (out_dir / "page.html").exists()
 
 
@@ -433,9 +407,9 @@ class TestCLIDryRun:
 
 class TestCLIName:
   def test_site_name_appears_in_output(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--name", "MyAwesomeSite")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--name", "MyAwesomeSite")
     html = (out_dir / "page.html").read_text()
     assert "MyAwesomeSite" in html
 
@@ -447,57 +421,57 @@ class TestCLIName:
 
 class TestNavigation:
   def test_nav_links_present_for_multiple_pages(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
-    write(tmp_path / "about.md", "# About\n\nInfo.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "about.md", "# About\n\nInfo.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "index.html").read_text()
     assert "about.html" in html
 
   def test_current_page_marked(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
-    write(tmp_path / "about.md", "# About\n\nInfo.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "about.md", "# About\n\nInfo.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "about.html").read_text()
     assert 'aria-current="page"' in html
 
   def test_index_labelled_home(self, tmp_path):
-    write(tmp_path / "index.md", "# Welcome\n\nContent.")
-    write(tmp_path / "other.md", "# Other\n\nContent.")
+    write_file(tmp_path / "index.md", "# Welcome\n\nContent.")
+    write_file(tmp_path / "other.md", "# Other\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "other.html").read_text()
     assert "Home" in html
 
   def test_index_link_appears_before_other_pages(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nContent.")
-    write(tmp_path / "about.md", "# About\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nContent.")
+    write_file(tmp_path / "about.md", "# About\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "about.html").read_text()
     assert html.index("index.html") < html.index("about.html")
 
   def test_sort_index_overrides_filename_order(self, tmp_path):
     # Without sort_index, "zebra" sorts before "about" alphabetically is wrong —
     # actually "about" < "zebra" alphabetically so we use "zzz" to confirm sort_index wins.
-    write(tmp_path / "index.md", "# Home\n\nContent.")
-    write(tmp_path / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
-    write(tmp_path / "about.md", "# About\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nContent.")
+    write_file(tmp_path / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
+    write_file(tmp_path / "about.md", "# About\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "index.html").read_text()
     # zzz.html has sort_index: 1 so it should appear before about.html
     assert html.index("zzz.html") < html.index("about.html")
 
   def test_sort_index_pages_before_unsorted(self, tmp_path):
     # Pages without sort_index should appear after all pages that have one.
-    write(tmp_path / "index.md", "# Home\n\nContent.")
-    write(tmp_path / "alpha.md", "# Alpha\n\nContent.")  # no sort_index
-    write(tmp_path / "beta.md", "---\nsort_index: 2\n---\n# Beta\n\nContent.")
-    write(tmp_path / "gamma.md", "---\nsort_index: 1\n---\n# Gamma\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nContent.")
+    write_file(tmp_path / "alpha.md", "# Alpha\n\nContent.")  # no sort_index
+    write_file(tmp_path / "beta.md", "---\nsort_index: 2\n---\n# Beta\n\nContent.")
+    write_file(tmp_path / "gamma.md", "---\nsort_index: 1\n---\n# Gamma\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "index.html").read_text()
     # gamma (sort_index:1) < beta (sort_index:2) < alpha (no sort_index)
     assert html.index("gamma.html") < html.index("beta.html")
@@ -505,27 +479,27 @@ class TestNavigation:
 
   def test_sort_index_on_subdir_index_orders_group(self, tmp_path):
     # sort_index on a subdirectory's index.md controls where the group appears.
-    write(tmp_path / "index.md", "# Home\n\nContent.")
-    write(tmp_path / "about.md", "# About\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nContent.")
+    write_file(tmp_path / "about.md", "# About\n\nContent.")
     sub = tmp_path / "docs"
     sub.mkdir()
-    write(sub / "index.md", "---\nsort_index: 1\n---\n# Docs\n\nContent.")
+    write_file(sub / "index.md", "---\nsort_index: 1\n---\n# Docs\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "index.html").read_text()
     # docs/ group (sort_index:1) should appear before about (no sort_index)
     assert html.index("docs/index.html") < html.index("about.html")
 
   def test_sort_index_orders_dropdown_children(self, tmp_path):
     # sort_index on pages within a subdirectory controls their dropdown order.
-    write(tmp_path / "index.md", "# Home\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nContent.")
     sub = tmp_path / "docs"
     sub.mkdir()
-    write(sub / "index.md", "# Docs\n\nContent.")
-    write(sub / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
-    write(sub / "aaa.md", "# AAA\n\nContent.")
+    write_file(sub / "index.md", "# Docs\n\nContent.")
+    write_file(sub / "zzz.md", "---\nsort_index: 1\n---\n# ZZZ\n\nContent.")
+    write_file(sub / "aaa.md", "# AAA\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "index.html").read_text()
     # zzz (sort_index:1) should appear before aaa (no sort_index) in dropdown
     assert html.index("zzz.html") < html.index("aaa.html")
@@ -538,30 +512,30 @@ class TestNavigation:
 
 class TestEdgeCases:
   def test_empty_file_is_ignored(self, tmp_path):
-    write(tmp_path / "empty.md", "")
-    write(tmp_path / "normal.md", "# Normal")
+    write_file(tmp_path / "empty.md", "")
+    write_file(tmp_path / "normal.md", "# Normal")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "normal.html").exists()
     assert not (out_dir / "empty.html").exists()
 
   def test_file_with_no_headings(self, tmp_path):
-    write(tmp_path / "plain.md", "Just some text with no headings.")
+    write_file(tmp_path / "plain.md", "Just some text with no headings.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "plain.html").exists()
 
   def test_unicode_content(self, tmp_path):
-    write(tmp_path / "unicode.md", "# Ünïcödé\n\nCafé naïve résumé.")
+    write_file(tmp_path / "unicode.md", "# Ünïcödé\n\nCafé naïve résumé.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "unicode.html").read_text(encoding="utf-8")
     assert "Ünïcödé" in html
 
   def test_deeply_nested_subdirectory(self, tmp_path):
-    write(tmp_path / "a" / "b" / "c" / "deep.md", "# Deep\n\nContent.")
+    write_file(tmp_path / "a" / "b" / "c" / "deep.md", "# Deep\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "a" / "b" / "c" / "deep.html").exists()
 
 
@@ -627,7 +601,7 @@ class TestParseFrontMatter:
 
 class TestFrontMatterIntegration:
   def test_title_from_front_matter_overrides_h1(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\ntitle: FM Title\n---\n# H1 Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -635,7 +609,7 @@ class TestFrontMatterIntegration:
     assert "FM Title" in html
 
   def test_description_from_front_matter(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\ndescription: Custom desc.\n---\n# Title\n\nOther text.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -643,7 +617,7 @@ class TestFrontMatterIntegration:
     assert "Custom desc." in html
 
   def test_author_appears_in_output(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\nauthor: Jane Doe\n---\n# Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -651,7 +625,7 @@ class TestFrontMatterIntegration:
     assert "Jane Doe" in html
 
   def test_date_appears_in_output(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\ndate: 2025-06-01\n---\n# Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -659,7 +633,7 @@ class TestFrontMatterIntegration:
     assert "2025" in html
 
   def test_tags_rendered_in_output(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\ntags:\n  - python\n  - web\n---\n# Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -668,7 +642,7 @@ class TestFrontMatterIntegration:
     assert "web" in html
 
   def test_keywords_meta_tag_present(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\ntags:\n  - python\n---\n# Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -676,7 +650,7 @@ class TestFrontMatterIntegration:
     assert 'name="keywords"' in html
 
   def test_author_meta_tag_present(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           "---\nauthor: Jane\n---\n# Title\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -684,15 +658,15 @@ class TestFrontMatterIntegration:
     assert 'name="author"' in html
 
   def test_draft_page_skipped_by_cli(self, tmp_path):
-    write(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert not (out_dir / "draft.html").exists()
     assert (out_dir / "page.html").exists()
 
   def test_no_front_matter_still_works(self, tmp_path):
-    src = write(tmp_path / "plain.md", "# Plain\n\nNo front matter.")
+    src = write_file(tmp_path / "plain.md", "# Plain\n\nNo front matter.")
     out = tmp_path / "plain.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     assert out.exists()
@@ -722,9 +696,9 @@ class TestThemes:
     assert "not found" in result.stdout + result.stderr
 
   def test_theme_flag_accepted(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--theme", "default")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--theme", "default")
     assert (out_dir / "page.html").exists()
 
   def test_theme_assets_copied_to_output(self, tmp_path):
@@ -765,7 +739,7 @@ class TestThemes:
 
 class TestXSSEscaping:
   def test_title_xss_escaped(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           '---\ntitle: "</title><script>alert(1)</script>"\n---\nContent.')
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -774,7 +748,7 @@ class TestXSSEscaping:
     assert "&lt;script&gt;" in html_text
 
   def test_author_xss_escaped_in_author_line(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           '---\nauthor: "</em><script>xss</script>"\n---\n# T\n\nContent.')
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -782,14 +756,14 @@ class TestXSSEscaping:
     assert "<script>xss</script>" not in html_text
 
   def test_site_name_xss_escaped(self, tmp_path):
-    src = write(tmp_path / "page.md", "# T\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# T\n\nContent.")
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, '<script>evil</script>', nav_pages=[])
     html_text = out.read_text()
     assert "<script>evil</script>" not in html_text
 
   def test_nav_title_xss_escaped(self, tmp_path):
-    src = write(tmp_path / "page.md", "# T\n\nContent.")
+    src = write_file(tmp_path / "page.md", "# T\n\nContent.")
     out = tmp_path / "page.html"
     # nav_pages takes 5-tuples: (out_html, title, md_path, layout, sort_index)
     nav_pages = [(out, '<script>nav</script>', src, 'page', None)]
@@ -798,7 +772,7 @@ class TestXSSEscaping:
     assert "<script>nav</script>" not in html_text
 
   def test_description_xss_escaped(self, tmp_path):
-    src = write(tmp_path / "page.md",
+    src = write_file(tmp_path / "page.md",
           '---\ndescription: "<script>desc</script>"\n---\n# T\n\nContent.')
     out = tmp_path / "page.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
@@ -836,7 +810,7 @@ class TestMalformedYAMLWarning:
     assert "warning" in captured.err.lower() or "malformed" in captured.err.lower()
 
   def test_malformed_yaml_integration_generates_html(self, tmp_path):
-    src = write(tmp_path / "bad.md", "---\n: bad: yaml: {\n---\n# Title\n\nContent.")
+    src = write_file(tmp_path / "bad.md", "---\n: bad: yaml: {\n---\n# Title\n\nContent.")
     out = tmp_path / "bad.html"
     hanma.convert_md_to_html(src, out, "S", nav_pages=[])
     assert out.exists()
@@ -850,20 +824,20 @@ class TestMalformedYAMLWarning:
 
 class TestNavRelativeURLs:
   def test_nav_link_from_subdir_to_index_is_relative(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
-    write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     html = (out_dir / "posts" / "hello.html").read_text()
     # Link from posts/hello.html to index.html must go up one level
     assert "../index.html" in html
 
   def test_posts_dir_pages_appear_in_posts_listing(self, tmp_path):
     # Posts in posts/ are excluded from the main nav but appear in the Blog dropdown.
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
-    write(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "posts" / "hello.md", "# Hello\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     # posts/index.html should be generated and link to hello.html
     posts_listing = (out_dir / "posts" / "index.html").read_text()
     assert "hello.html" in posts_listing
@@ -879,10 +853,10 @@ class TestNavRelativeURLs:
 
 class TestDraftSummary:
   def test_draft_count_in_summary(self, tmp_path):
-    write(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "draft.md", "---\ndraft: true\n---\n# Draft\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    result = run(str(tmp_path), "--output", str(out_dir))
+    result = run_hanma(str(tmp_path), "--output", str(out_dir))
     assert "draft" in result.stdout.lower()
     assert "1" in result.stdout
 
@@ -917,59 +891,59 @@ class TestListThemes:
 
 class TestTagIndexPages:
   def test_tag_index_pages_generated(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - python\n  - web\n---\n# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "tags" / "python.html").exists()
     assert (out_dir / "tags" / "web.html").exists()
 
   def test_tag_index_lists_tagged_page(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - python\n---\n# My Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     tag_html = (out_dir / "tags" / "python.html").read_text()
     assert "My Page" in tag_html
 
   def test_tag_index_title_contains_tag_name(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - python\n---\n# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     tag_html = (out_dir / "tags" / "python.html").read_text()
     assert "python" in tag_html
 
   def test_tag_links_in_page_content(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - python\n---\n# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     page_html = (out_dir / "page.html").read_text()
     # Tag should be a link pointing into tags/
     assert "tags/python.html" in page_html or "../tags/python.html" in page_html
 
   def test_tag_slug_normalizes_special_chars(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - 'my tag'\n---\n# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     # "my tag" → "my-tag"
     assert (out_dir / "tags" / "my-tag.html").exists()
 
   def test_multiple_pages_same_tag(self, tmp_path):
-    write(tmp_path / "a.md", "---\ntags:\n  - python\n---\n# A\n\nContent.")
-    write(tmp_path / "b.md", "---\ntags:\n  - python\n---\n# B\n\nContent.")
+    write_file(tmp_path / "a.md", "---\ntags:\n  - python\n---\n# A\n\nContent.")
+    write_file(tmp_path / "b.md", "---\ntags:\n  - python\n---\n# B\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     tag_html = (out_dir / "tags" / "python.html").read_text()
     assert "A" in tag_html
     assert "B" in tag_html
 
   def test_no_tag_pages_when_no_tags(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert not (out_dir / "tags").exists()
 
   def test_build_tag_index_html_function(self, tmp_path):
@@ -991,29 +965,29 @@ class TestTagIndexPages:
 
 class TestSitemap:
   def test_sitemap_generated_with_base_url(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     assert (out_dir / "sitemap.xml").exists()
 
   def test_sitemap_contains_page_urls(self, tmp_path):
-    write(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     sitemap = (out_dir / "sitemap.xml").read_text()
     assert "https://example.com" in sitemap
     assert "index.html" in sitemap
 
   def test_sitemap_not_generated_without_base_url(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert not (out_dir / "sitemap.xml").exists()
 
   def test_sitemap_is_valid_xml(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     import xml.etree.ElementTree as ET
     tree = ET.parse(out_dir / "sitemap.xml")
     root_elem = tree.getroot()
@@ -1032,25 +1006,25 @@ class TestSitemap:
 class TestRSS:
   def test_rss_generated_with_base_url(self, tmp_path):
     (tmp_path / "posts").mkdir()
-    write(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
+    write_file(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     assert (out_dir / "feed.xml").exists()
 
   def test_rss_contains_absolute_urls(self, tmp_path):
     (tmp_path / "posts").mkdir()
-    write(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
+    write_file(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     feed = (out_dir / "feed.xml").read_text()
     assert "https://example.com/posts/one.html" in feed
     assert "<title>Post One</title>" in feed
 
   def test_rss_is_valid_xml(self, tmp_path):
     (tmp_path / "posts").mkdir()
-    write(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
+    write_file(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     import xml.etree.ElementTree as ET
     tree = ET.parse(out_dir / "feed.xml")
     root_elem = tree.getroot()
@@ -1058,9 +1032,9 @@ class TestRSS:
 
   def test_rss_not_generated_without_base_url(self, tmp_path):
     (tmp_path / "posts").mkdir()
-    write(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
+    write_file(tmp_path / "posts/one.md", "---\ntitle: Post One\ndate: 2026-01-01\n---\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert not (out_dir / "feed.xml").exists()
 
 
@@ -1070,24 +1044,24 @@ class TestRSS:
 
 class TestCanonicalLinks:
   def test_canonical_link_added_with_base_url(self, tmp_path):
-    write(tmp_path / "index.md", "# Home")
+    write_file(tmp_path / "index.md", "# Home")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     index = (out_dir / "index.html").read_text()
     assert '<link rel="canonical" href="https://example.com/index.html" />' in index
 
   def test_canonical_link_nested_page(self, tmp_path):
     (tmp_path / "subdir").mkdir()
-    write(tmp_path / "subdir/page.md", "# Page")
+    write_file(tmp_path / "subdir/page.md", "# Page")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     page = (out_dir / "subdir/page.html").read_text()
     assert '<link rel="canonical" href="https://example.com/subdir/page.html" />' in page
 
   def test_no_canonical_link_without_base_url(self, tmp_path):
-    write(tmp_path / "index.md", "# Home")
+    write_file(tmp_path / "index.md", "# Home")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     index = (out_dir / "index.html").read_text()
     assert 'rel="canonical"' not in index
 
@@ -1118,19 +1092,19 @@ class TestSiteConfig:
     assert config.get("theme") == "default"
 
   def test_site_config_name_used_in_output(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     cfg = tmp_path / "hanma.yaml"
     cfg.write_text("name: ConfigSiteName\n")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
     page_html = (out_dir / "page.html").read_text()
     assert "ConfigSiteName" in page_html
 
   def test_cli_name_overrides_config(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     (tmp_path / "hanma.yaml").write_text("name: ConfigName\n")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--name", "CLIName")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--name", "CLIName")
     page_html = (out_dir / "page.html").read_text()
     assert "CLIName" in page_html
     assert "ConfigName" not in page_html
@@ -1143,9 +1117,9 @@ class TestSiteConfig:
   def test_custom_config_path_flag(self, tmp_path):
     cfg_path = tmp_path / "custom.yaml"
     cfg_path.write_text("name: CustomPathSite\n")
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--config", str(cfg_path))
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--config", str(cfg_path))
     page_html = (out_dir / "page.html").read_text()
     assert "CustomPathSite" in page_html
 
@@ -1188,25 +1162,25 @@ class TestSiteConfig:
 
 class TestStaticAssets:
   def test_static_dir_copied_to_output(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     (tmp_path / "static").mkdir()
     (tmp_path / "static" / "logo.png").write_bytes(b"\x89PNG\r\n")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "static" / "logo.png").exists()
 
   def test_static_subdirs_copied(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     (tmp_path / "static" / "images").mkdir(parents=True)
     (tmp_path / "static" / "images" / "photo.jpg").write_bytes(b"JFIF")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "static" / "images" / "photo.jpg").exists()
 
   def test_no_static_dir_no_error(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))  # must not raise
+    run_hanma(str(tmp_path), "--output", str(out_dir))  # must not raise
 
   def test_copy_static_assets_function(self, tmp_path):
     src = tmp_path / "src"
@@ -1232,53 +1206,53 @@ class TestStaticAssets:
 
 class TestSearchIndex:
   def test_search_json_generated(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "search.json").exists()
 
   def test_search_json_contains_page_title(self, tmp_path):
-    write(tmp_path / "page.md", "# My Title\n\nContent.")
+    write_file(tmp_path / "page.md", "# My Title\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     import json as _json
     entries = _json.loads((out_dir / "search.json").read_text())
     titles = [e["title"] for e in entries]
     assert "My Title" in titles
 
   def test_search_json_contains_description(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ndescription: A custom description.\n---\n# Title\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     import json as _json
     entries = _json.loads((out_dir / "search.json").read_text())
     descs = [e["description"] for e in entries]
     assert "A custom description." in descs
 
   def test_search_json_contains_tags(self, tmp_path):
-    write(tmp_path / "page.md",
+    write_file(tmp_path / "page.md",
        "---\ntags:\n  - python\n---\n# Title\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     import json as _json
     entries = _json.loads((out_dir / "search.json").read_text())
     all_tags = [t for e in entries for t in e.get("tags", [])]
     assert "python" in all_tags
 
   def test_search_json_url_is_relative(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     import json as _json
     entries = _json.loads((out_dir / "search.json").read_text())
     for e in entries:
       assert not e["url"].startswith("http")
 
   def test_search_json_url_absolute_with_base_url(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     import json as _json
     entries = _json.loads((out_dir / "search.json").read_text())
     for e in entries:
@@ -1292,10 +1266,10 @@ class TestSearchIndex:
     assert result[0]["title"] == "T"
 
   def test_search_disabled(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
-    write(tmp_path / "hanma.yml", "search: false")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "hanma.yml", "search: false")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--config", str(tmp_path / "hanma.yml"))
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--config", str(tmp_path / "hanma.yml"))
     
     # 1. search.json should NOT exist
     assert not (out_dir / "search.json").exists()
@@ -1315,31 +1289,31 @@ class TestSearchIndex:
 class TestPostListingPage:
   def test_posts_index_generated_when_posts_dir_exists(self, tmp_path):
     # Files in posts/ default to layout: post and appear in posts/index.html
-    write(tmp_path / "posts" / "post.md",
+    write_file(tmp_path / "posts" / "post.md",
        "---\ndate: 2025-01-01\n---\n# My Post\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "posts" / "index.html").exists()
 
   def test_posts_index_generated_when_layout_post_used(self, tmp_path):
     # A page with explicit layout: post also appears in posts/index.html
-    write(tmp_path / "post.md",
+    write_file(tmp_path / "post.md",
        "---\nlayout: post\ndate: 2025-01-01\n---\n# My Post\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert (out_dir / "posts" / "index.html").exists()
 
   def test_posts_index_not_generated_when_no_post_pages(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     assert not (out_dir / "posts" / "index.html").exists()
 
   def test_posts_index_lists_post_pages(self, tmp_path):
-    write(tmp_path / "posts" / "post.md",
+    write_file(tmp_path / "posts" / "post.md",
        "---\ndate: 2025-03-01\n---\n# My Post\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     posts_html = (out_dir / "posts" / "index.html").read_text()
     assert "My Post" in posts_html
 
@@ -1347,24 +1321,24 @@ class TestPostListingPage:
     import os, time
     old_md = tmp_path / "posts" / "old.md"
     new_md = tmp_path / "posts" / "new.md"
-    write(old_md, "# Old Post\n\nContent.")
+    write_file(old_md, "# Old Post\n\nContent.")
     time.sleep(0.05)
-    write(new_md, "# New Post\n\nContent.")
+    write_file(new_md, "# New Post\n\nContent.")
     # Ensure old.md has an older mtime than new.md
     old_time = time.time() - 100
     os.utime(old_md, (old_time, old_time))
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     posts_html = (out_dir / "posts" / "index.html").read_text()
     assert posts_html.index("New Post") < posts_html.index("Old Post")
 
   def test_posts_index_skipped_when_posts_index_md_exists(self, tmp_path):
     # If posts/index.md exists as a source file, the auto-generated listing is skipped.
-    write(tmp_path / "posts" / "a-post.md",
+    write_file(tmp_path / "posts" / "a-post.md",
        "---\ndate: 2025-01-01\n---\n# A Post\n\nContent.")
-    write(tmp_path / "posts" / "index.md", "# My Posts\n\nManual listing.")
+    write_file(tmp_path / "posts" / "index.md", "# My Posts\n\nManual listing.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir))
+    run_hanma(str(tmp_path), "--output", str(out_dir))
     # posts/index.html should exist but be the rendered posts/index.md, not auto-generated
     posts_html = (out_dir / "posts" / "index.html").read_text()
     assert "My Posts" in posts_html
@@ -1390,51 +1364,51 @@ class TestPostListingPage:
 
 class TestIncrementalBuilds:
   def test_incremental_flag_accepted(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert (out_dir / "page.html").exists()
 
   def test_manifest_file_created(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert (out_dir / ".hanma_manifest.json").exists()
 
   def test_unchanged_page_skipped_on_second_build(self, tmp_path):
-    write(tmp_path / "page.md", "# Page\n\nContent.")
+    write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--incremental")
-    result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
+    result = run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert "skip" in result.stdout.lower() or "unchanged" in result.stdout.lower()
 
   def test_changed_page_rebuilt(self, tmp_path):
-    md = write(tmp_path / "page.md", "# Page\n\nContent.")
+    md = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_dir = tmp_path / "out"
-    run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     # Modify the file and bump its mtime
     md.write_text("# Page\n\nUpdated content.")
     import os as _os
     _os.utime(md, None)
-    result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    result = run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert "skip" not in result.stdout.lower() or "Updated" in (out_dir / "page.html").read_text()
 
   def test_stale_removal_forces_nav_rebuild(self, tmp_path):
     """When a source file is deleted, remaining pages must be rebuilt so their
     nav no longer references the removed page."""
-    write(tmp_path / "index.md", "# Home\n\nHome page.")
-    write(tmp_path / "about.md", "# About\n\nAbout page.")
-    extra = write(tmp_path / "extra.md", "# Extra\n\nExtra page.")
+    write_file(tmp_path / "index.md", "# Home\n\nHome page.")
+    write_file(tmp_path / "about.md", "# About\n\nAbout page.")
+    extra = write_file(tmp_path / "extra.md", "# Extra\n\nExtra page.")
     out_dir = tmp_path / "out"
     # First build: all three pages, each with nav links to the others.
-    run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
     assert (out_dir / "extra.html").exists()
     # Confirm nav contains the extra link in the remaining pages.
     assert "extra" in (out_dir / "index.html").read_text().lower()
 
     # Remove the extra source file and rebuild incrementally.
     extra.unlink()
-    result = run(str(tmp_path), "--output", str(out_dir), "--incremental")
+    result = run_hanma(str(tmp_path), "--output", str(out_dir), "--incremental")
 
     # The stale HTML must have been cleaned.
     assert not (out_dir / "extra.html").exists()
@@ -1444,12 +1418,12 @@ class TestIncrementalBuilds:
     assert "skip" not in result.stdout.lower()
 
   def test_page_needs_rebuild_missing_output(self, tmp_path):
-    md = write(tmp_path / "page.md", "# Page\n\nContent.")
+    md = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_html = tmp_path / "page.html"
     assert hanma.page_needs_rebuild(md, out_html, {}, 0.0) is True
 
   def test_page_needs_rebuild_unchanged(self, tmp_path):
-    md = write(tmp_path / "page.md", "# Page\n\nContent.")
+    md = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_html = tmp_path / "page.html"
     out_html.write_text("<html></html>")
     mtime = md.stat().st_mtime
@@ -1457,7 +1431,7 @@ class TestIncrementalBuilds:
     assert hanma.page_needs_rebuild(md, out_html, manifest, 0.0) is False
 
   def test_page_needs_rebuild_template_changed(self, tmp_path):
-    md = write(tmp_path / "page.md", "# Page\n\nContent.")
+    md = write_file(tmp_path / "page.md", "# Page\n\nContent.")
     out_html = tmp_path / "page.html"
     out_html.write_text("<html></html>")
     mtime = md.stat().st_mtime
@@ -1622,7 +1596,7 @@ class TestInitScaffold:
     assert "# Welcome" in (site_dir / "index.md").read_text()
 
   def test_init_cli_flag(self, tmp_path):
-    run("--init", cwd=tmp_path)
+    run_hanma("--init", cwd=tmp_path)
     assert (tmp_path / "site" / "index.md").is_file()
     assert (tmp_path / "site" / "about.md").is_file()
     assert (tmp_path / "site" / "posts" / "hello-world.md").is_file()
@@ -1631,7 +1605,7 @@ class TestInitScaffold:
     site_dir = tmp_path / "site"
     site_dir.mkdir()
     (site_dir / "index.md").write_text("existing")
-    result = run("--init", cwd=tmp_path, expect_ok=False)
+    result = run_hanma("--init", cwd=tmp_path, expect_ok=False)
     assert result.returncode != 0
     assert (site_dir / "index.md").read_text() == "existing"
 
@@ -1640,7 +1614,7 @@ class TestInitScaffold:
     site_dir.mkdir()
     extra = site_dir / "extra.md"
     extra.write_text("gone")
-    run("--init", "--force", cwd=tmp_path)
+    run_hanma("--init", "--force", cwd=tmp_path)
     assert not extra.exists()
     assert "# Welcome" in (site_dir / "index.md").read_text()
 

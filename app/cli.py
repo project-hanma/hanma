@@ -386,18 +386,49 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
     _serve(settings["output_dir"], settings["effective_port"], settings["effective_host"])
 
 
+class QuietHandler(SimpleHTTPRequestHandler):
+  """Custom HTTP handler that validates paths and restricts logging."""
+  def __init__(self, *a, **kw):
+    # directory is passed via HTTPServer/SimpleHTTPRequestHandler mechanism
+    super().__init__(*a, **kw)
+
+  def translate_path(self, path):
+    """Map URL to physical path and ensure it stays within serve_dir."""
+    # Get the default translation
+    fs_path = super().translate_path(path)
+    
+    # Resolve to absolute physical path (follows symlinks)
+    try:
+      resolved = Path(fs_path).resolve()
+    except Exception:
+      # If resolution fails, return an empty string to trigger 404
+      return ""
+        
+    # Ensure the resolved path is strictly within the serving directory.
+    # self.server.directory is set by SimpleHTTPRequestHandler
+    serve_dir = Path(self.directory).resolve()
+    if not resolved.is_relative_to(serve_dir):
+      # Attempted directory traversal via symlink or other means
+      return "/dev/null/non-existent"
+        
+    return str(resolved)
+
+  def log_message(self, format, *args):  # pylint: disable=redefined-builtin
+    """Only log errors (status code >= 400) to keep logs clean."""
+    if len(args) > 1:
+      try:
+        code = int(args[1])
+        if code >= 400:
+          super().log_message(format, *args)
+      except (ValueError, IndexError):
+        pass
+
+
 def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
   """Start a local HTTP server serving serve_dir."""
-
-  class QuietHandler(SimpleHTTPRequestHandler):
-    """Custom HTTP handler that suppresses log messages."""
-    def __init__(self, *a, **kw):
-      super().__init__(*a, directory=str(serve_dir), **kw)
-    def log_message(self, format, *args):  # pylint: disable=redefined-builtin
-      pass
-
   try:
     server = HTTPServer((host, port), QuietHandler)
+    server.directory = str(serve_dir) # SimpleHTTPRequestHandler uses this
   except OSError as exc:
     if exc.errno == 98 or "already in use" in str(exc).lower():
       print(f"Error: port {port} is already in use. Try --port <other>")
