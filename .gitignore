@@ -1,6 +1,7 @@
 .venv
 .claude
 .gemini
+.anti*
 .prompt
 output
 __pycache__
