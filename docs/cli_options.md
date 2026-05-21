@@ -67,6 +67,10 @@
 > `file://`, which prevents the theme preference from persisting across pages.
 > Serving over `http://localhost` resolves this. When `index.html` is present,
 > `--serve` will open it automatically as the landing page.
+> 
+> For security, directory indexing is strictly blocked on the local development server.
+> If a directory is requested and does not contain an `index.html` file, a
+> `404 Not Found` response is returned instead of listing the directory's files.
 
 ## Options
 

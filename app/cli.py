@@ -392,6 +392,11 @@ class QuietHandler(SimpleHTTPRequestHandler):
     # directory is passed via HTTPServer/SimpleHTTPRequestHandler mechanism
     super().__init__(*a, **kw)
 
+  def list_directory(self, path):
+    """Override list_directory to block directory indexing and return a clean 404."""
+    self.send_error(404, "File not found")
+    return None
+
   def translate_path(self, path):
     """Map URL to physical path and ensure it stays within serve_dir."""
     # Get the default translation

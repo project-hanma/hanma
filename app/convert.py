@@ -180,11 +180,23 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
         'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
         'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
       ]
+      allowed_class_tags = {
+        'a', 'abbr', 'b', 'blockquote', 'code', 'del', 'details', 'div', 'dl', 'dt', 'dd',
+        'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'li', 'ol', 'p', 'pre',
+        'span', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+      }
+      allowed_id_tags = {
+        'a', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'p', 'pre', 'span', 'sup', 'table'
+      }
+
       allowed_attrs = {
-        '*': ['class', 'id', 'style'],
         'a': ['href', 'title', 'rel', 'aria-current'],
         'img': ['src', 'alt', 'title', 'width', 'height'],
       }
+      for tag in allowed_class_tags:
+        allowed_attrs.setdefault(tag, []).append('class')
+      for tag in allowed_id_tags:
+        allowed_attrs.setdefault(tag, []).append('id')
       css_san = CSSSanitizer() if CSSSanitizer else None
       return bleach.clean(html_str, tags=allowed_tags, attributes=allowed_attrs, css_sanitizer=css_san)
     return html_str
