@@ -76,6 +76,12 @@ class _HanmaEventHandler(_WatchdogHandler):
       self._debounce_timer = threading.Timer(0.3, self._rebuild)
       self._debounce_timer.start()
 
+  def _is_empty_file(self, path: Path) -> bool:
+    try:
+      return path.stat().st_size == 0
+    except OSError:
+      return True
+
   def on_any_event(self, event) -> None:
     if getattr(event, "event_type", None) not in self._TRIGGER_TYPES:
       return
@@ -92,31 +98,19 @@ class _HanmaEventHandler(_WatchdogHandler):
 
     # For directories: trigger on deletion, or move
     if getattr(event, "is_directory", False):
-      if event.event_type in {"deleted", "moved"}:
-        if not self._is_hidden(src_path):
-          self._schedule_rebuild()
-          return
+      if event.event_type in {"deleted", "moved"} and not self._is_hidden(src_path):
+        self._schedule_rebuild()
       # Skip "created" for directories to avoid building empty folders
       return
 
     # For files
     if self._is_relevant(src):
-      # Skip if it's a creation or modification and the file is empty
-      if event.event_type in {"created", "modified"}:
-        try:
-          if src_path.stat().st_size == 0:
-            return
-        except OSError:
-          return
+      if event.event_type in {"created", "modified"} and self._is_empty_file(src_path):
+        return
       self._schedule_rebuild()
     elif event.event_type == "moved":
       dest = getattr(event, "dest_path", "")
-      if dest and self._is_relevant(dest):
-        try:
-          if Path(dest).stat().st_size == 0:
-            return
-        except OSError:
-          return
+      if dest and self._is_relevant(dest) and not self._is_empty_file(Path(dest)):
         self._schedule_rebuild()
 
 

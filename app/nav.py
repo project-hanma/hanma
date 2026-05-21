@@ -171,14 +171,23 @@ def _get_rel_parts(page_html: Path, output_root: Optional[Path]) -> tuple:
 
 def _apply_link_logic(item: dict, link_data, default_url: str):
   """Apply external link overrides to a nav item."""
-  if isinstance(link_data, dict) and link_data.get("url"):
-    item["url"] = link_data.get("url")
-    target = str(link_data.get("target", "")).lower().strip()
-    if target in ("tab", "window"):
-      item["target"] = "_blank"
-    elif target == "same":
-      item["target"] = "_self"
-    elif target:
-      item["target"] = target
-  else:
-    item["url"] = default_url
+  item["url"] = default_url
+  if not isinstance(link_data, dict):
+    return
+
+  override_url = link_data.get("url")
+  if not override_url:
+    return
+
+  item["url"] = override_url
+  target = str(link_data.get("target", "")).lower().strip()
+
+  target_map = {
+    "tab": "_blank",
+    "window": "_blank",
+    "same": "_self"
+  }
+
+  if target:
+    item["target"] = target_map.get(target, target)
+
