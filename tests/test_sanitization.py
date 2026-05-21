@@ -70,3 +70,35 @@ def test_sanitization_disabled_by_default(tmp_path):
     
     html_content = out_file.read_text(encoding="utf-8")
     assert "<script>alert('xss')</script>" in html_content
+
+
+def test_sanitization_strips_style_and_unpermitted_class_id(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_text = (
+        "---\n"
+        "description: Safe Description\n"
+        "---\n"
+        '<span style="color: red; position: fixed;">Style Test</span>\n'
+        '<img class="img-class" id="img-id" src="image.png" alt="img" />\n'
+        '<div class="allowed-class" id="allowed-id">Allowed Div</div>'
+    )
+    md_file.write_text(md_text, encoding="utf-8")
+    out_file = tmp_path / "test.html"
+    
+    # Run with sanitization enabled
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+    
+    html_content = out_file.read_text(encoding="utf-8")
+    
+    # style must be stripped completely from the span
+    assert "<span>Style Test</span>" in html_content
+    assert "color: red" not in html_content
+    
+    # class and id must be stripped on img (not whitelisted for class/id)
+    assert "image.png" in html_content
+    assert "img-class" not in html_content
+    assert "img-id" not in html_content
+    
+    # class and id must be kept on div (whitelisted for class/id)
+    assert 'class="allowed-class"' in html_content
+    assert 'id="allowed-id"' in html_content

@@ -147,3 +147,15 @@ def test_manifest_hash_robustness():
     with patch('app.manifest.Path.exists', return_value=True):
         assert page_needs_rebuild(Path("test.md"), Path("test.html"), manifest, 
                                  template_mtime=0, md_hash="a"*64) is False
+
+
+def test_directory_indexing_blocked():
+    """Test Item 5: Ensure directory indexing is blocked and returns a 404."""
+    with patch.object(QuietHandler, '__init__', return_value=None):
+        handler = QuietHandler()
+        handler.send_error = MagicMock()
+        
+        res = handler.list_directory("/some/path")
+        
+        assert res is None
+        handler.send_error.assert_called_once_with(404, "File not found")

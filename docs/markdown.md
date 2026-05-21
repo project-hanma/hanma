@@ -48,3 +48,10 @@ def hello_world():
 ````
 
 For a full list of supported languages, refer to the [Pygments documentation](https://pygments.org/languages/).
+
+## Security & HTML Sanitization
+
+When the `--sanitize` flag is enabled (or `sanitize: true` is configured in `hanma.yml`), Hanma filters generated HTML using `bleach` to secure the output:
+
+- **Style Attribute Removal:** All inline `style="..."` attributes are stripped completely to prevent malicious inline CSS injection or clickjacking.
+- **Restricted Class & ID Attributes:** To prevent style/layout spoofing, class and ID attributes (commonly added via the `attr_list` extension, e.g. `{.invert-dark}`) are strictly whitelisted. They are permitted on structural and text formatting tags (such as headings, paragraphs, divs, spans, tables, lists, and code blocks) but are stripped from unpermitted elements (like `<img>`).
