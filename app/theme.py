@@ -58,6 +58,15 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
 _CSS_SUBDIR = Path("assets") / "css"
 
 
+def _copy_assets_dir(src_assets_dir: Path, output_root: Path) -> None:
+  for child in src_assets_dir.rglob("*"):
+    if not child.is_file():
+      continue
+    rel = child.relative_to(src_assets_dir)
+    dest = output_root / "assets" / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(child, dest)
+
 def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
   """Copy all non-template files from theme_dir into output_root/assets/.
 
@@ -72,13 +81,7 @@ def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
     if src.name == "template.html":
       continue
     if src.is_dir() and src.name == "assets":
-      for child in src.rglob("*"):
-        if not child.is_file():
-          continue
-        rel = child.relative_to(src)
-        dest = output_root / "assets" / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(child, dest)
+      _copy_assets_dir(src, output_root)
       continue
     dest = css_dir / src.name
     if src.is_file():

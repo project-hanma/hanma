@@ -115,12 +115,14 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
   # Footer attribution line (author and/or date)
   fm_author_esc = html.escape(fm_author)
-  if fm_author and fm_date_str:
-    author_line = f"By <em>{fm_author_esc}</em>, {fm_date_str} &nbsp;&middot;&nbsp; "
-  elif fm_author:
-    author_line = f"By <em>{fm_author_esc}</em> &nbsp;&middot;&nbsp; "
-  elif fm_date_str:
-    author_line = f"{fm_date_str} &nbsp;&middot;&nbsp; "
+  parts = []
+  if fm_author:
+    parts.append(f"By <em>{fm_author_esc}</em>")
+  if fm_date_str:
+    parts.append(fm_date_str)
+  
+  if parts:
+    author_line = ", ".join(parts) + " &nbsp;&middot;&nbsp; "
   else:
     author_line = ""
 
