@@ -159,3 +159,19 @@ def test_directory_indexing_blocked():
         
         assert res is None
         handler.send_error.assert_called_once_with(404, "File not found")
+
+
+def test_quiet_handler_directory_init():
+    """Verify that QuietHandler correctly grabs directory from the server parameter during init."""
+    with patch('app.cli.SimpleHTTPRequestHandler.__init__') as mock_super_init:
+        mock_server = MagicMock()
+        mock_server.directory = "/path/to/serve_dir"
+        
+        # Instantiate with mock request, address, and server
+        QuietHandler(MagicMock(), ("127.0.0.1", 12345), mock_server)
+        
+        # Super init should be called with the correct keyword argument 'directory'
+        mock_super_init.assert_called_once()
+        _, kwargs = mock_super_init.call_args
+        assert kwargs.get("directory") == "/path/to/serve_dir"
+
