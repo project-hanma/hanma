@@ -392,7 +392,10 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
 class QuietHandler(SimpleHTTPRequestHandler):
   """Custom HTTP handler that validates paths and restricts logging."""
   def __init__(self, *a, **kw):
-    # directory is passed via HTTPServer/SimpleHTTPRequestHandler mechanism
+    # Retrieve directory from the server object (which is passed as the third positional argument)
+    # to work around HTTPServer instantiating the handler without passing a directory kwarg.
+    if len(a) > 2 and hasattr(a[2], 'directory'):
+      kw['directory'] = a[2].directory
     super().__init__(*a, **kw)
 
   def list_directory(self, path):
