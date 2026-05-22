@@ -56,9 +56,7 @@ def test_narwhal_rendered_layout_side_right(tmp_path):
   assert 'class="narwhal-container sidebar-right"' in index_html
   assert 'class="narwhal-container sidebar-left"' not in index_html
   
-  # Check old-reddit subreddit-bar and layout elements
-  assert 'class="subreddit-bar"' in index_html
-  assert 'r/narwhaltestsite' in index_html.lower()
+  # Check layout elements
   assert 'class="narwhal-sidebar"' in index_html
   assert 'class="sidebar-box search-box"' in index_html
   assert 'class="sidebar-box nav-box"' in index_html

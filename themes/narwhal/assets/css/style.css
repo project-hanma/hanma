@@ -70,7 +70,7 @@ a:hover {
 }
 
 .site-header-inner {
-  max-width: 1600px;
+  max-width: 1625px;
   margin: 0 auto;
   display: flex;
   align-items: baseline;
@@ -89,26 +89,10 @@ a:hover {
   color: #ffffff;
 }
 
-.subreddit-bar {
-  font-size: 12px;
-  color: #e2eafc;
-  font-weight: 600;
-  background-color: rgba(255, 255, 255, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.1);
-}
-
-[data-theme="dark"] .subreddit-bar {
-  background-color: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: #8ab4f8;
-}
-
 /* Container & Layout */
 .narwhal-container {
   display: flex;
-  max-width: 1600px;
+  max-width: 1625px;
   margin: 20px auto;
   padding: 0 20px;
   gap: 24px;
@@ -447,7 +431,7 @@ a:hover {
 
 /* Footer */
 .site-footer {
-  max-width: 1600px;
+  max-width: 1625px;
   margin: 40px auto 20px;
   padding: 20px;
   text-align: center;
