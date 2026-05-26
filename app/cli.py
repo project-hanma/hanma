@@ -265,6 +265,7 @@ def _get_effective_settings(args: argparse.Namespace, site_config: dict) -> dict
   settings["output_arg"]  = args.output   if args.output   is not None else site_config.get("output", None)
   settings["posts_label"] = str(site_config.get("posts_label", "Blog"))
   settings["effective_timezone"] = site_config.get("timezone",    None)
+  settings["sidebar_side"] = site_config.get("sidebar_side", "right")
 
   _apply_runtime_settings(settings, args, site_config)
 
@@ -321,7 +322,8 @@ def _run_single_file_build(target: Path, settings: dict, dry_run: bool) -> None:
   convert_md_to_html(
     target, out_html, settings["site_name"], nav_pages=[], 
     template=theme_template, sanitize=settings["effective_sanitize"], 
-    timezone=settings["effective_timezone"], search_enabled=settings["effective_search"]
+    timezone=settings["effective_timezone"], search_enabled=settings["effective_search"],
+    sidebar_side=settings["sidebar_side"]
   )
   print(f"  ✓  {target.name}  →  {out_html}")
   print("\nDone.  1 converted, 0 errors.")
@@ -352,6 +354,7 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
     sanitize=settings["effective_sanitize"],
     timezone=settings["effective_timezone"],
     search_enabled=settings["effective_search"],
+    sidebar_side=settings["sidebar_side"]
   )
 
   if dry_run:

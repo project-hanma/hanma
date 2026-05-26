@@ -45,7 +45,8 @@ def _process_page_worker(md_path: Path, out_html: Path, site_name: str,
              layout: str, posts_out: Optional[Path], posts_label: str,
              sanitize: bool, timezone: Optional[str],
              recent_posts: list, front: dict, body: str,
-             search_enabled: bool = True) -> Path:
+             search_enabled: bool = True,
+             sidebar_side: str = "right") -> Path:
   """Worker function for ProcessPoolExecutor to convert one page."""
   # We must reload the template in the worker because Jinja2 Templates are not picklable
   template, _ = _load_theme_impl(theme_name, themes_dir)
@@ -61,7 +62,8 @@ def _process_page_worker(md_path: Path, out_html: Path, site_name: str,
     recent_posts=recent_posts,
     front_matter=front,
     body=body,
-    search_enabled=search_enabled
+    search_enabled=search_enabled,
+    sidebar_side=sidebar_side
   )
 
 
@@ -191,7 +193,8 @@ def _generate_sidecar_files(all_files: list, output_dir: Path,
 def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
              nav_pages: list, template, base_url: str, output_dir: Path,
              nav_posts_out: Optional[Path], posts_label: str,
-             recent_posts: list, search_enabled: bool = True) -> int:
+             recent_posts: list, search_enabled: bool = True,
+             sidebar_side: str = "right") -> int:
   """Generate tag index pages and return error count."""
   errors = 0
 
@@ -213,7 +216,8 @@ def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
       build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
               base_url=base_url, output_root=output_dir,
               posts_out=nav_posts_out, posts_label=posts_label,
-              recent_posts=recent_posts, search_enabled=search_enabled)
+              recent_posts=recent_posts, search_enabled=search_enabled,
+              sidebar_side=sidebar_side)
       print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
@@ -259,14 +263,15 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
                 template, base_url, output_dir, nav_posts_out, 
                 posts_label, recent_posts, search_enabled,
                 has_posts_listing, posts_out_path, dated_pages, 
-                posts_collision, all_files, search_entries) -> int:
+                posts_collision, all_files, search_entries,
+                sidebar_side: str = "right") -> int:
   """Generate tag indices, posts listing, and sidecar files."""
   errors = 0
   # ── Generate tag index pages ──────────────────────────────────────────
   errors += _generate_tag_indices(
     tags_map, tag_out_paths, site_name, nav_pages, template,
     base_url, output_dir, nav_posts_out, posts_label, recent_posts,
-    search_enabled=search_enabled
+    search_enabled=search_enabled, sidebar_side=sidebar_side
   )
 
   # ── Generate posts listing page ───────────────────────────────────────
@@ -275,7 +280,8 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
       build_posts_listing_html(dated_pages, posts_out_path, site_name, nav_pages, template,
                   base_url=base_url, output_root=output_dir,
                   posts_label=posts_label, posts_out=nav_posts_out,
-                  recent_posts=recent_posts, search_enabled=search_enabled)
+                  recent_posts=recent_posts, search_enabled=search_enabled,
+                  sidebar_side=sidebar_side)
       print(f"  [posts] posts/index.html  ({len(dated_pages)} post(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [posts] ERROR generating posts/index.html: {exc}")
@@ -293,7 +299,8 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
 def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir, 
           nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
           search_enabled, incremental, manifest, manifest_path, 
-          template_mtime, config_mtime, nav_sig, dry_run, base_url) -> tuple:
+          template_mtime, config_mtime, nav_sig, dry_run, base_url,
+          sidebar_side: str = "right") -> tuple:
   """Determine which pages need rebuilding and plan worker tasks."""
   tasks, ok, skipped = [], 0, 0
   theme_name = theme_dir.name
@@ -332,7 +339,8 @@ def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir,
       (
         md_path, out_html, site_name, nav_pages, theme_name, themes_dir,
         tags_out_dir, base_url, output_dir, layout, nav_posts_out, posts_label,
-        sanitize, timezone, recent_posts, front, body, search_enabled
+        sanitize, timezone, recent_posts, front, body, search_enabled,
+        sidebar_side
       ),
       rel, md_hash, md_path
     ))
@@ -395,7 +403,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
        config_path: Optional[Path] = None,
        sanitize: bool = False,
        timezone: Optional[str] = None,
-       search_enabled: bool = True) -> tuple[int, int, int]:
+       search_enabled: bool = True,
+       sidebar_side: str = "right") -> tuple[int, int, int]:
   """Run a full site build."""
 
   manifest, template_mtime, config_mtime = _init_manifest(incremental, manifest_path, theme_dir, config_path)
@@ -427,7 +436,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     all_files, root, output_dir, site_name, nav_pages, theme_dir, 
     nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
     search_enabled, incremental, manifest, manifest_path, template_mtime, 
-    config_mtime, nav_sig, dry_run, base_url
+    config_mtime, nav_sig, dry_run, base_url, sidebar_side=sidebar_side
   )
 
   if tasks:
@@ -451,7 +460,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     tags_map, tag_out_paths, site_name, nav_pages, template, base_url, 
     output_dir, nav_posts_out, posts_label, recent_posts, search_enabled,
     has_posts_listing, posts_out_path, dated_pages, posts_collision, all_files, 
-    search_entries
+    search_entries, sidebar_side=sidebar_side
   )
 
   if incremental and manifest_path is not None:
