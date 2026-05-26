@@ -17,6 +17,10 @@ output: output/
 # Theme to use from the themes/ directory.
 theme: default
 
+# Sidebar position for themes that support it (e.g., 'narwhal').
+# Options: right, left
+# sidebar_side: right
+
 # Start the local HTTP server after generating.
 # serve: false
 

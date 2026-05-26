@@ -20,6 +20,13 @@ themes/default/
 
 The `assets/` directory is merged into `output/assets/` during the build process.
 
+## Built-in Themes
+
+Hanma comes with two built-in themes:
+
+- **default**: A clean, centered layout with a sticky header.
+- **narwhal**: A professional sidebar-centric layout with a premium navy and slate blue color scheme. It supports the `sidebar_side` configuration option.
+
 ## Customization
 
 To create a custom theme:
@@ -47,6 +54,7 @@ To create a custom theme:
 | `search_json_url` | string | URL to `search.json` (relative or absolute) |
 | `base_url` | string | Absolute base URL from config |
 | `page_url` | string | URL of the current page relative to output root |
+| `sidebar_side` | string | Sidebar position (`left` or `right`) for supported themes |
 
 ### Custom Navigation Loop
 
