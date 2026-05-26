@@ -73,7 +73,8 @@ def _make_generated_page(content_html: str, title: str, description: str,
              posts_out: Optional[Path] = None,
              posts_label: str = "Blog",
              recent_posts: Optional[list] = None,
-             search_enabled: bool = True) -> Path:
+             search_enabled: bool = True,
+             sidebar_side: str = "right") -> Path:
   """Render a generated (non-markdown) page using the active theme template."""
   nav_items = get_nav_data(out_path, nav_pages, output_root=output_root,
                posts_out=posts_out, posts_label=posts_label,
@@ -104,6 +105,7 @@ def _make_generated_page(content_html: str, title: str, description: str,
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
     sitemap_link=sitemap_link,
     search_json_url=search_json_url if search_enabled else "",
+    sidebar_side=sidebar_side,
   )
   atomic_write_text(out_path, page_html, encoding="utf-8")
   return out_path
@@ -117,7 +119,8 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
              posts_out: Optional[Path] = None,
              posts_label: str = "Blog",
              recent_posts: Optional[list] = None,
-             search_enabled: bool = True) -> Path:
+             search_enabled: bool = True,
+             sidebar_side: str = "right") -> Path:
   """Generate a tag index page listing all pages tagged with tag.
 
   pages is a list of (out_html_path, title, date_val) tuples, sorted by date.
@@ -157,6 +160,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
     posts_out=posts_out, posts_label=posts_label,
     recent_posts=recent_posts,
     search_enabled=search_enabled,
+    sidebar_side=sidebar_side,
   )
 
 
@@ -168,7 +172,8 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                posts_label: str = "Blog",
                posts_out: Optional[Path] = None,
                recent_posts: Optional[list] = None,
-               search_enabled: bool = True) -> Path:
+               search_enabled: bool = True,
+               sidebar_side: str = "right") -> Path:
   """Generate posts.html listing all layout='post' pages, newest first.
 
   dated_pages is a list of (out_html_path, title, date_dt, description) tuples.
@@ -211,4 +216,5 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
     posts_out=posts_out, posts_label=posts_label,
     recent_posts=recent_posts,
     search_enabled=search_enabled,
+    sidebar_side=sidebar_side,
   )

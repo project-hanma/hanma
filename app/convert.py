@@ -77,7 +77,8 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             recent_posts: Optional[list] = None,
             front_matter: Optional[dict] = None,
             body: Optional[str] = None,
-            search_enabled: bool = True) -> Path:
+            search_enabled: bool = True,
+            sidebar_side: str = "right") -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -269,6 +270,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     last_updated=last_updated,
     sitemap_link=sitemap_link,
     search_json_url=search_url,
+    sidebar_side=sidebar_side,
   )
 
   atomic_write_text(out_path, page_html, encoding="utf-8")

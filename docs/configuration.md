@@ -15,6 +15,7 @@ incremental: false      # only rebuild changed pages (true/false)
 sanitize: false         # sanitize generated HTML using bleach (true/false)
 timezone: UTC           # timezone name (e.g. America/New_York)
 posts_label: Blog       # label for the posts listing link in the nav (default: "Blog")
+sidebar_side: right     # sidebar position for supported themes (left/right)
 ```
 
 ## Lookup Order
