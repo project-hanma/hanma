@@ -53,6 +53,12 @@ jobs:
           cd hanma
           git checkout ${{ github.head_ref || github.ref_name }}
 
+      - name: Extract App Version
+        run: |
+          cd hanma
+          APP_VERSION=$(grep '__version__' app/_version.py | cut -d'"' -f2)
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
+
       - name: Prepare Docker Metadata
         run: |
           # Sanitize repository name
@@ -72,6 +78,11 @@ jobs:
 
           echo "IMAGE_FULL_PATH=${{ vars.REGISTRY }}/${REPO_LOWER}:${TAG_SAFE}" >> $GITHUB_ENV
 
+          # Set version-specific path for main branch
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "IMAGE_VERSION_PATH=${{ vars.REGISTRY }}/${REPO_LOWER}:${APP_VERSION}" >> $GITHUB_ENV
+          fi
+
       - name: Docker Login
         run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login --username ${{ secrets.REGISTRY_USER }} --password-stdin ${{ vars.REGISTRY }}
 
@@ -80,15 +91,24 @@ jobs:
           cd hanma
           docker pull ${IMAGE_FULL_PATH} || true
           docker build --cache-from ${IMAGE_FULL_PATH} -f Containerfile -t ${IMAGE_FULL_PATH} .
+          if [ -n "${IMAGE_VERSION_PATH}" ]; then
+            docker tag ${IMAGE_FULL_PATH} ${IMAGE_VERSION_PATH}
+          fi
 
       - name: Push Image
         run: |
           docker push ${IMAGE_FULL_PATH}
+          if [ -n "${IMAGE_VERSION_PATH}" ]; then
+            docker push ${IMAGE_VERSION_PATH}
+          fi
 
       - name: Cleanup Local Image
         if: always()
         run: |
           docker rmi ${IMAGE_FULL_PATH} || true
+          if [ -n "${IMAGE_VERSION_PATH}" ]; then
+            docker rmi ${IMAGE_VERSION_PATH} || true
+          fi
           docker image prune -f
 
       - name: Cleanup Docker Login
