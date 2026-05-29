@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <meta name="description" content="{{ description }}" />
+  <meta name="generator" content="hanma" />
+  {% if base_url %}<link rel="canonical" href="{{ base_url.rstrip('/') }}/{{ page_url }}" />{% endif %}
+  {{ author_meta | safe }}{{ keywords_meta | safe }}{{ refresh_meta | safe }}
+  
+  <!-- Modern Premium Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/style.css" />
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/pygments.css" />
+  
+  <!-- Apply saved theme before first paint to avoid flash -->
+  <script src="{{ root_rel }}assets/scripts/theme-init.js"></script>
+</head>
+<body>
+
+<!-- Dynamic Ambient Background Blobs -->
+<div class="ambient-orb orb-1" aria-hidden="true"></div>
+<div class="ambient-orb orb-2" aria-hidden="true"></div>
+<div class="ambient-orb orb-3" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <div class="logo-wrap">
+      <a class="site-name-link" href="{{ root_rel or '/' }}">
+        <span class="logo-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="2.5"/>
+            <text x="40" y="40" text-anchor="middle" dominant-baseline="central" font-size="38" fill="currentColor" style="font-family:'Outfit',sans-serif; font-weight:800;">半</text>
+          </svg>
+        </span>
+        <span class="site-name-text">{{ site_name }}</span>
+      </a>
+    </div>
+
+    <!-- Collapsible Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle navigation menu" aria-expanded="false">
+      <span class="menu-bar"></span>
+      <span class="menu-bar"></span>
+      <span class="menu-bar"></span>
+    </button>
+
+    <div class="header-actions">
+      {% if search_json_url %}
+      <div class="search-box">
+        <input class="search-input" id="searchInput" type="search"
+               placeholder="Search site…" aria-label="Search site"
+               data-search-url="{{ search_json_url }}" />
+        <ul class="search-dropdown" id="searchDropdown" role="listbox"></ul>
+      </div>
+      {% endif %}
+
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+        <span class="icon" id="themeIcon">&#9790;</span>
+        <span id="themeLabel">Dark</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="glass-container sidebar-{{ sidebar_side or 'right' }}">
+  <!-- Navigation Sidebar (Frosted Card) -->
+  <aside class="glass-sidebar" role="complementary">
+    <div class="sidebar-card">
+      <h2 class="card-header">Navigation</h2>
+      <nav class="site-nav" aria-label="Site navigation">
+        <ul>
+          {% for item in nav_items %}
+          <li class="nav-item-wrap{% if item.is_current %} nav-current{% endif %}">
+            {% if item.url %}
+            <a class="nav-link" href="{{ item.url }}"{% if item.target %} target="{{ item.target }}"{% endif %}{% if item.target == '_blank' %} rel="noopener noreferrer"{% endif %}{% if item.is_current %} aria-current="page"{% endif %}>
+              <span class="link-text">{{ item.title }}</span>
+            </a>
+            {% else %}
+            <span class="nav-folder">{{ item.title }}</span>
+            {% endif %}
+            
+            {% if item.children %}
+            <ul class="nav-children">
+              {% for child in item.children %}
+              <li class="nav-child-item">
+                {% if child.is_more_link %}
+                <a class="nav-child-link nav-more-posts-link" href="{{ child.url }}">
+                  <span class="nav-more-posts">{{ child.title }}</span>
+                </a>
+                {% else %}
+                <a class="nav-child-link{% if child.is_current %} nav-child-current{% endif %}" href="{{ child.url }}"{% if child.target %} target="{{ child.target }}"{% endif %}{% if child.target == '_blank' %} rel="noopener noreferrer"{% endif %}>
+                  {{ child.title }}
+                </a>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- Main Content Area (Frosted Card) -->
+  <main class="glass-main" id="content" role="main">
+    <article class="prose glass-card">
+      {{ content | safe }}
+      
+      {% if page_tags %}
+      <div class="page-tags">
+        <span class="tags-label">Tags:</span>
+        <div class="tags-list">
+          {% for tag in page_tags %}
+          {% if tag.url %}
+          <a class="tag-pill" href="{{ root_rel }}{{ tag.url }}">{{ tag.name }}</a>
+          {% else %}
+          <span class="tag-pill tag-static">{{ tag.name }}</span>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </article>
+  </main>
+</div>
+
+<footer class="site-footer" role="contentinfo">
+  <div class="footer-inner">
+    <p class="source-file-info">{{ source_file }}</p>
+    <p class="author-date-info">
+      {% if author %}By <span class="author-name">{{ author }}</span>{% endif %}
+      {% if author and page_date %}, {% endif %}
+      {% if page_date %}<time datetime="{{ page_date }}">{{ page_date }}</time>{% endif %}
+      {% if author or page_date %} &nbsp;&middot;&nbsp; {% endif %}
+      Last updated: <span class="last-updated-time">{{ last_updated | safe }}</span>
+    </p>
+    <p class="generator-info">
+      Generated by 
+      <a class="hanma-link" href="https://gitea.thezengarden.net/project-hanma/hanma" target="_blank" rel="noopener noreferrer">
+        <svg class="footer-logo" width="16" height="16" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="4"/>
+          <text x="40" y="40" text-anchor="middle" dominant-baseline="central" font-size="38" fill="currentColor" style="font-family:'Outfit',sans-serif; font-weight:800;">半</text>
+        </svg>
+        <span>hanma.py</span>
+      </a>
+    </p>
+    <p class="footer-links">
+      {{ sitemap_link | safe }}
+      {% if base_url %}&nbsp;&middot;&nbsp; <a href="{{ root_rel }}feed.xml" class="rss-link">RSS Feed</a>{% endif %}
+    </p>
+  </div>
+</footer>
+
+<!-- JS Scripts -->
+<script src="{{ root_rel }}assets/scripts/theme-toggle.js"></script>
+{% if search_json_url %}<script src="{{ root_rel }}assets/scripts/search.js"></script>{% endif %}
+<script>
+  // Mobile menu interactive logic
+  document.getElementById('mobileMenuToggle').addEventListener('click', function() {
+    var expanded = this.getAttribute('aria-expanded') === 'true';
+    this.setAttribute('aria-expanded', !expanded);
+    document.querySelector('.glass-sidebar').classList.toggle('mobile-open');
+  });
+</script>
+
+</body>
+</html>
