@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <meta name="description" content="{{ description }}" />
+  <meta name="generator" content="hanma" />
+  {% if base_url %}<link rel="canonical" href="{{ base_url.rstrip('/') }}/{{ page_url }}" />{% endif %}
+  {{ author_meta | safe }}{{ keywords_meta | safe }}{{ refresh_meta | safe }}
+  
+  <!-- Preconnect to Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Noto+Serif+JP:wght@300;500;700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+  
+  <!-- Styling and dark/light system stylesheets -->
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/style.css" />
+  <link rel="stylesheet" href="{{ root_rel }}assets/css/pygments.css" />
+  <script src="{{ root_rel }}assets/scripts/theme-init.js"></script>
+</head>
+<body>
+
+<div class="zen-wrapper">
+  <!-- Top header with logo, title, and actions -->
+  <header class="zen-header">
+    <div class="zen-header-inner">
+      <a class="zen-logo-link" href="{{ root_rel or '/' }}" aria-label="Go to homepage">
+        <!-- SVG Sanzon-seki (Three stones arrangement) with ripples -->
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="zen-logo" aria-hidden="true">
+          <ellipse cx="50" cy="80" rx="42" ry="7" fill="none" stroke="var(--ripple-color)" stroke-width="1.5" />
+          <ellipse cx="50" cy="80" rx="30" ry="5" fill="none" stroke="var(--ripple-color)" stroke-width="1.2" />
+          <ellipse cx="50" cy="80" rx="18" ry="3" fill="none" stroke="var(--ripple-color)" stroke-width="1.0" />
+          <!-- Rock 1: Large Base Rock -->
+          <path d="M15 80 C20 40, 52 45, 58 80 Z" fill="var(--stone-large)" />
+          <!-- Rock 2: Tall Vertical Rock -->
+          <path d="M42 80 C38 25, 72 20, 72 80 Z" fill="var(--stone-medium)" />
+          <!-- Rock 3: Small Accent Rock -->
+          <path d="M66 80 C70 60, 88 65, 86 80 Z" fill="var(--stone-small)" />
+          <!-- Moss patch -->
+          <path d="M32 80 C37 72, 58 72, 63 80 Z" fill="var(--moss-green)" />
+        </svg>
+        <span class="zen-site-name">{{ site_name }}</span>
+      </a>
+      
+      <span class="header-spacer"></span>
+
+      {% if search_json_url %}
+      <div class="search-wrap">
+        <input class="search-input" id="searchInput" type="search"
+               placeholder="Search..." aria-label="Search site"
+               data-search-url="{{ search_json_url }}" />
+        <ul class="search-dropdown" id="searchDropdown" role="listbox"></ul>
+      </div>
+      {% endif %}
+
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark/light mode">
+        <span class="icon" id="themeIcon">&#9790;</span>
+        <span id="themeLabel">Dark</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Sticky/fixed navigation bar resembling bamboo stepping stones -->
+  <nav class="zen-nav" aria-label="Main Navigation">
+    <div class="zen-nav-inner">
+      <ul>
+        {% for item in nav_items %}
+        <li{% if item.is_current %} class="nav-current"{% endif %}>
+          {% if item.url %}
+          <a href="{{ item.url }}"{% if item.target %} target="{{ item.target }}"{% endif %}{% if item.target == '_blank' %} rel="noopener noreferrer"{% endif %}{% if item.is_current %} aria-current="page"{% endif %}>{{ item.title }}</a>
+          {% else %}
+          <span class="nav-folder">{{ item.title }}</span>
+          {% endif %}
+          {% if item.children %}
+          <ul class="nav-dropdown-menu">
+            {% for child in item.children %}
+            <li>{% if child.is_more_link %}<a href="{{ child.url }}"><span class="nav-more-posts-sep"></span><span class="nav-more-posts">{{ child.title }}</span></a>{% else %}<a href="{{ child.url }}"{% if child.target %} target="{{ child.target }}"{% endif %}{% if child.target == '_blank' %} rel="noopener noreferrer"{% endif %}{% if child.is_current %} style="font-weight:600;color:var(--accent)"{% endif %}>{{ child.title }}</a>{% endif %}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Content Container styled like a shoji pane or paper sheet -->
+  <main class="zen-main-container">
+    <div class="shoji-accent left"></div>
+    <div class="shoji-accent right"></div>
+
+    <article class="prose">
+      {{ content | safe }}
+      {% if page_tags %}
+      <div class="page-tags">
+        {% for tag in page_tags %}
+        {% if tag.url %}
+        <a class="tag" href="{{ root_rel }}{{ tag.url }}">{{ tag.name }}</a>
+        {% else %}
+        <span class="tag">{{ tag.name }}</span>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </article>
+  </main>
+
+  <!-- Serene Footer -->
+  <footer class="zen-footer">
+    <div class="zen-footer-inner">
+      <div class="zen-footer-left">
+        <p class="source-file-info">{{ source_file }}</p>
+        <p class="meta-info">
+          {% if author %}Written by <em>{{ author }}</em>{% endif %}
+          {% if author and page_date %}, {% endif %}
+          {% if page_date %}{{ page_date }}{% endif %}
+          {% if author or page_date %} &nbsp;&middot;&nbsp; {% endif %}
+          Last updated: {{ last_updated | safe }}
+        </p>
+      </div>
+      
+      <div class="zen-footer-center" aria-hidden="true">
+        <!-- Floating sakura/leaf symbol -->
+        <span class="zen-symbol">&#127809;</span>
+      </div>
+
+      <div class="zen-footer-right">
+        <p class="sitemap-rss">
+          {{ sitemap_link | safe }}
+          {% if base_url %}&nbsp;&middot;&nbsp; <a href="{{ root_rel }}feed.xml">RSS Feed</a>{% endif %}
+        </p>
+        <p class="credits">
+          Generated with <a href="https://gitea.thezengarden.net/project-hanma/hanma" target="_blank" class="engine-link"><svg width="18" height="18" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="vertical-align:middle;margin-right:0.3em;display:inline-block;"><circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="40" y="40" text-anchor="middle" dominant-baseline="central" font-size="38" fill="currentColor" style="font-family:'Noto Serif JP','Yu Mincho',serif;">半</text></svg>hanma.py</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script src="{{ root_rel }}assets/scripts/theme-toggle.js"></script>
+{% if search_json_url %}<script src="{{ root_rel }}assets/scripts/search.js"></script>{% endif %}
+
+</body>
+</html>
