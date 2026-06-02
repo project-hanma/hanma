@@ -1,0 +1,971 @@
+/* ── Reset ────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Design Tokens & Color Palettes ───────────────────────────────────── */
+:root {
+  /* Light Theme (Japanese Zen Garden Sand, Stone & Moss) */
+  --bg: #f5efe6;
+  --surface: #faf8f5;
+  --border: #dcd4c8;
+  --text: #2c2f2d;
+  --muted: #727a75;
+  
+  --accent: #3d6044;
+  --accent-hover: #29422e;
+  --accent-soft: #ecf3ed;
+  
+  --code-bg: #f1ebd8;
+  --code-border: #e0d7c7;
+  
+  --nav-bg: #ece5d9;
+  --nav-drop: #faf8f5;
+  
+  --btn-bg: #e5ddd0;
+  --btn-text: #2c2f2d;
+  --btn-border: #c8beae;
+  
+  --ripple-color: rgba(61, 96, 68, 0.15);
+  
+  /* Rock colors (Sanzon-seki) */
+  --stone-large: #757d76;
+  --stone-medium: #5b635c;
+  --stone-small: #434a44;
+  --moss-green: #4f7d58;
+  --wood-thumb: #b8987b;
+  
+  /* Fonts */
+  --font-body: "Lora", "Noto Serif JP", "Georgia", "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-ui: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+
+  --line: 1.8;
+  --gap: clamp(1.5rem, 5vw, 3.5rem);
+  
+  /* Raked sand ripples (SVG pattern) */
+  --sand-ripple-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60' viewBox='0 0 120 60'%3E%3Cpath d='M0 30 C30 15 30 45 60 30 C90 15 90 45 120 30' fill='none' stroke='%23e9e1d5' stroke-width='1.5'/%3E%3Cpath d='M0 60 C30 45 30 75 60 60 C90 45 90 75 120 60' fill='none' stroke='%23e9e1d5' stroke-width='1.5'/%3E%3Cpath d='M0 0 C30 -15 30 15 60 0 C90 -15 90 15 120 0' fill='none' stroke='%23e9e1d5' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+/* ── Dark Mode ────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #141715;
+  --surface: #1d211e;
+  --border: #2e332f;
+  --text: #e2e8e4;
+  --muted: #828c85;
+  
+  --accent: #78a880;
+  --accent-hover: #96c29d;
+  --accent-soft: #1d2620;
+  
+  --code-bg: #181c1a;
+  --code-border: #2d3330;
+  
+  --nav-bg: #1c201d;
+  --nav-drop: #1d211e;
+  
+  --btn-bg: #272c29;
+  --btn-text: #e2e8e4;
+  --btn-border: #3c443f;
+  
+  --ripple-color: rgba(120, 168, 128, 0.15);
+  
+  /* Rock colors */
+  --stone-large: #2d332f;
+  --stone-medium: #212522;
+  --stone-small: #1b1e1c;
+  --moss-green: #37543d;
+  --wood-thumb: #856a53;
+  
+  /* Raked sand ripples (Dark SVG pattern) */
+  --sand-ripple-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60' viewBox='0 0 120 60'%3E%3Cpath d='M0 30 C30 15 30 45 60 30 C90 15 90 45 120 30' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3Cpath d='M0 60 C30 45 30 75 60 60 C90 45 90 75 120 60' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3Cpath d='M0 0 C30 -15 30 15 60 0 C90 -15 90 15 120 0' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+/* System-level Dark Preference Fallback */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141715;
+    --surface: #1d211e;
+    --border: #2e332f;
+    --text: #e2e8e4;
+    --muted: #828c85;
+    
+    --accent: #78a880;
+    --accent-hover: #96c29d;
+    --accent-soft: #1d2620;
+    
+    --code-bg: #181c1a;
+    --code-border: #2d3330;
+    
+    --nav-bg: #1c201d;
+    --nav-drop: #1d211e;
+    
+    --btn-bg: #272c29;
+    --btn-text: #e2e8e4;
+    --btn-border: #3c443f;
+    
+    --ripple-color: rgba(120, 168, 128, 0.15);
+    
+    --stone-large: #2d332f;
+    --stone-medium: #212522;
+    --stone-small: #1b1e1c;
+    --moss-green: #37543d;
+    --wood-thumb: #856a53;
+    
+    --sand-ripple-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60' viewBox='0 0 120 60'%3E%3Cpath d='M0 30 C30 15 30 45 60 30 C90 15 90 45 120 30' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3Cpath d='M0 60 C30 45 30 75 60 60 C90 45 90 75 120 60' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3Cpath d='M0 0 C30 -15 30 15 60 0 C90 -15 90 15 120 0' fill='none' stroke='%23202422' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+}
+
+/* ── Base & Custom Scrollbar ──────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  font-size: clamp(16px, 1vw, 18px);
+  /* Account for header space when scrolling to anchors */
+  scroll-padding-top: 8.5rem;
+}
+
+body {
+  background-color: var(--bg);
+  background-image: var(--sand-ripple-svg);
+  background-repeat: repeat;
+  background-size: 120px 60px;
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: var(--line);
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Custom Bamboo-style Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--wood-thumb);
+  border: 2px solid var(--bg);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* ── Layout Wrapper ───────────────────────────────────────────────────── */
+.zen-wrapper {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.zen-header {
+  width: 100%;
+  padding-top: 1.5rem;
+  padding-bottom: 0.5rem;
+  z-index: 200;
+}
+
+.zen-header-inner {
+  display: flex;
+  align-items: center;
+  background: rgba(var(--surface), 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-bottom: 3px solid var(--wood-thumb);
+  border-radius: 12px;
+  padding: 0.75rem 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+  gap: 1.25rem;
+}
+
+.zen-logo-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+
+.zen-logo {
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.zen-logo-link:hover .zen-logo {
+  transform: scale(1.06) rotate(2deg);
+}
+
+/* SVG Rock Styling */
+.zen-logo path, .zen-logo ellipse {
+  transition: fill 0.3s, stroke 0.3s;
+}
+
+.zen-site-name {
+  font-family: var(--font-ui);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  transition: color 0.3s;
+}
+.zen-logo-link:hover .zen-site-name {
+  color: var(--accent-hover);
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+/* ── Navigation ───────────────────────────────────────────────────────── */
+.zen-nav {
+  position: sticky;
+  top: 1.5rem;
+  z-index: 190;
+  margin-top: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.zen-nav-inner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: 3px solid var(--wood-thumb);
+  border-radius: 8px;
+  padding: 0 1rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+}
+
+.zen-nav-inner > ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.zen-nav-inner > ul > li {
+  position: relative;
+}
+
+.zen-nav-inner > ul > li > a {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.65rem 0.75rem;
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.zen-nav-inner > ul > li > a::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0.75rem;
+  right: 0.75rem;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.zen-nav-inner > ul > li > a:hover::after,
+.zen-nav-inner > ul > li:focus-within > a::after,
+.zen-nav-inner > ul > li.nav-current > a::after {
+  transform: scaleX(1);
+}
+
+.zen-nav-inner > ul > li > a:hover,
+.zen-nav-inner > ul > li:focus-within > a {
+  color: var(--accent);
+}
+
+/* Folder Menu Label */
+.zen-nav-inner > ul > li > span.nav-folder {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text);
+  padding: 0.65rem 0.75rem;
+  cursor: default;
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.zen-nav-inner > ul > li:hover > span.nav-folder,
+.zen-nav-inner > ul > li:focus-within > span.nav-folder {
+  color: var(--accent);
+}
+
+/* Navigation Dropdown (Shoji slide-down look) */
+.zen-nav-inner > ul > li > ul.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: var(--nav-drop);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 0.5rem 0;
+  z-index: 300;
+  animation: zenSlideDown 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes zenSlideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.zen-nav-inner > ul > li:hover > ul.nav-dropdown-menu,
+.zen-nav-inner > ul > li:focus-within > ul.nav-dropdown-menu {
+  display: block;
+}
+
+.zen-nav-inner > ul > li > ul.nav-dropdown-menu > li > a {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.5rem 1.25rem;
+  border-left: 3px solid transparent;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.zen-nav-inner > ul > li > ul.nav-dropdown-menu > li > a:hover {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+/* Nav separator for more posts */
+.nav-more-posts-sep {
+  display: block;
+  height: 1px;
+  background: var(--border);
+  margin: 0.4rem 0.8rem;
+  opacity: 0.4;
+}
+
+.nav-more-posts {
+  font-weight: 600;
+  color: var(--accent) !important;
+}
+
+/* Highlight current active elements */
+.zen-nav-inner > ul > li.nav-current > a,
+.zen-nav-inner > ul > li.nav-current > span.nav-folder {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Hide navigation if empty */
+.zen-nav:empty {
+  display: none;
+}
+
+/* ── Shoji Card Content Area ─────────────────────────────────────────── */
+.zen-main-container {
+  flex: 1;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.02);
+  padding: clamp(2rem, 6vw, 4.5rem);
+  margin-bottom: 2.5rem;
+}
+
+/* Dynamic Shoji Screen Vertical Accents on hover/active states */
+.shoji-accent {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.25;
+}
+.shoji-accent.left { left: 1.5rem; }
+.shoji-accent.right { right: 1.5rem; }
+
+/* ── Prose Typography & Formatting ────────────────────────────────────── */
+.prose > * + * {
+  margin-top: 1.5em;
+}
+
+/* text-wrap: balance & pretty implementation from guidance */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-weight: 500;
+  line-height: 1.3;
+  margin-top: 2.2em;
+  margin-bottom: 0.6em;
+  text-wrap: balance;
+}
+
+.prose h1 {
+  font-size: 2.25rem;
+  margin-top: 0;
+  border-bottom: 1px double var(--border);
+  padding-bottom: 0.75rem;
+}
+
+.prose h2 {
+  font-size: 1.6rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.prose h3 {
+  font-size: 1.3rem;
+}
+
+.prose h4 {
+  font-size: 1.1rem;
+  font-style: italic;
+}
+
+.prose p, .prose li, .prose blockquote {
+  text-wrap: pretty;
+}
+
+.prose p {
+  margin-top: 1.25em;
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: color 0.2s, text-decoration-color 0.2s;
+}
+
+.prose a:hover {
+  color: var(--accent-hover);
+  text-decoration-thickness: 2px;
+}
+
+.prose strong {
+  font-weight: 700;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+/* Lists */
+.prose ul, .prose ol {
+  padding-left: 1.75em;
+}
+
+.prose ul {
+  list-style: none;
+}
+
+/* Custom Zen Bullet points (Mini pebbles) */
+.prose ul > li {
+  position: relative;
+  margin-bottom: 0.5em;
+}
+
+.prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.25em;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  background-color: var(--accent);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li + li {
+  margin-top: 0.4em;
+}
+
+/* Zen Styled Blockquotes */
+.prose blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 1rem 1.5rem;
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  color: var(--text);
+  opacity: 0.95;
+}
+.prose blockquote p {
+  margin-top: 0;
+}
+
+/* In-line Code */
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+/* Code Blocks */
+.prose pre {
+  background: #181c1a;
+  border: 1px solid #2d3330;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+
+.prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: #e2e8e4;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2rem 0;
+  font-size: 0.92rem;
+  font-family: var(--font-ui);
+}
+
+.prose th {
+  text-align: left;
+  font-weight: 600;
+  background: var(--accent-soft);
+  border-bottom: 2px solid var(--border);
+  padding: 0.75rem 1rem;
+  color: var(--accent);
+}
+
+.prose td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.65rem 1rem;
+}
+
+.prose tr:nth-child(even) td {
+  background: rgba(var(--accent-soft), 0.3);
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px double var(--border);
+  margin: 3rem 0;
+  text-align: center;
+}
+
+.prose hr::after {
+  content: "✦ ✦ ✦";
+  display: inline-block;
+  position: relative;
+  top: -10px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--border);
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin: 1.5rem auto;
+  border: 1px solid var(--border);
+  padding: 5px;
+  background: var(--surface);
+  transition: transform 0.3s ease;
+}
+
+.prose img:hover {
+  transform: scale(1.01);
+}
+
+/* Footnotes */
+.prose .footnote {
+  font-size: 0.85em;
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  color: var(--muted);
+}
+
+.prose dl dt {
+  font-weight: bold;
+  margin-top: 1rem;
+}
+
+.prose dl dd {
+  margin-left: 1.5rem;
+  color: var(--muted);
+}
+
+/* Permalink anchors from TocExtension */
+.prose .headerlink {
+  opacity: 0;
+  margin-left: 0.4em;
+  font-size: 0.75em;
+  text-decoration: none;
+  color: var(--muted);
+  transition: opacity 0.2s;
+}
+
+.prose :is(h2,h3,h4):hover .headerlink {
+  opacity: 1;
+}
+
+/* ── Dark Mode Toggle Button ─────────────────────────────────────────── */
+.theme-toggle {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.theme-toggle .icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* ── Search Box ──────────────────────────────────────────────────────── */
+.search-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.search-input {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  width: 9rem;
+  outline: none;
+  transition: border-color 0.25s, width 0.25s, background-color 0.25s;
+}
+
+.search-input:focus {
+  background-color: var(--surface);
+  border-color: var(--accent);
+  width: 12rem;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 18rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  background: var(--nav-drop);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  z-index: 400;
+  list-style: none;
+  padding: 0.4rem 0;
+  animation: zenSlideDown 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.search-dropdown.open {
+  display: block;
+}
+
+.search-dropdown li a {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.5rem 1.25rem;
+  border-left: 3px solid transparent;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.search-dropdown li a:hover {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.search-desc {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.15rem;
+}
+
+.search-no-results {
+  padding: 0.65rem 1.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--font-ui);
+}
+
+/* ── Tags List ────────────────────────────────────────────────────────── */
+.page-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.page-tags .tag {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  text-decoration: none;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.page-tags a.tag:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+/* ── Tag Index & Post Listings ────────────────────────────────────────── */
+.tag-index, .post-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 1.5rem;
+}
+
+.tag-index li, .post-list li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-index li:last-child, .post-list li:last-child {
+  border-bottom: none;
+}
+
+.post-date {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-left: 0.5rem;
+}
+
+.post-desc {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+  margin-bottom: 0;
+}
+
+/* ── Serene Footer ────────────────────────────────────────────────────── */
+.zen-footer {
+  width: 100%;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 3rem;
+  background-color: rgba(var(--surface), 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 1.5rem 0;
+}
+
+.zen-footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.zen-footer-left, .zen-footer-right {
+  flex: 1;
+}
+
+.zen-footer-right {
+  text-align: right;
+}
+
+.zen-footer p {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.zen-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.zen-footer a:hover {
+  color: var(--accent);
+}
+
+.zen-footer-center {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+/* Japanese leaf/bamboo sway animation */
+@keyframes zenSway {
+  0%, 100% { transform: rotate(-8deg) scale(1); }
+  50% { transform: rotate(8deg) scale(1.05); }
+}
+
+.zen-symbol {
+  display: inline-block;
+  font-size: 1.6rem;
+  color: var(--accent);
+  animation: zenSway 8s ease-in-out infinite;
+  user-select: none;
+}
+
+/* ── Responsive Styling ───────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .zen-main-container {
+    padding: 2rem;
+  }
+  
+  .shoji-accent {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .zen-footer-inner {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+  
+  .zen-footer-right {
+    text-align: center;
+  }
+  
+  .zen-header-inner {
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Horizontal scroll for navigation menu on tablet */
+  .zen-nav-inner > ul {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+  
+  .zen-nav-inner > ul > li > ul.nav-dropdown-menu {
+    display: none !important; /* Hide complicated dropdowns on touch swipe nav */
+  }
+}
+
+@media (max-width: 520px) {
+  .zen-nav {
+    display: none; /* Hide primary horizontal nav on very narrow screens */
+  }
+  
+  .zen-site-name {
+    font-size: 0.95rem;
+  }
+  
+  .zen-logo {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+/* ── Print Styling ────────────────────────────────────────────────────── */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .zen-header, .zen-nav, .zen-footer-center, .theme-toggle, .search-wrap {
+    display: none !important;
+  }
+  
+  .zen-main-container {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  
+  .prose h1, .prose h2 {
+    color: black !important;
+  }
+}
