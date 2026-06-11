@@ -58,6 +58,12 @@
 # List available themes
 ./hanma.py --list-themes
 
+# Generate a default configuration file (conf/hanma-defaults.yml)
+./hanma.py --generate-default-config
+
+# Generate a default configuration file at a custom path
+./hanma.py --generate-default-config my-config.yml
+
 # Show version
 ./hanma.py --version
 ```
@@ -93,4 +99,5 @@
 | `--init` | — | Scaffold a new `site/` directory with sample content |
 | `--force` | — | Used with `--init`; wipes `site/` before scaffolding |
 | `--list-themes` | — | List available themes and exit |
+| `--generate-default-config [FILE]` | — | Generate a default configuration file and exit (default: `conf/hanma-defaults.yml`) |
 | `--version` | — | Print version and exit |

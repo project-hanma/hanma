@@ -43,3 +43,57 @@ def load_site_config(config_path: Path) -> dict:
   allowed = {"name", "base_url", "output", "theme", "serve", "port", "host", "watch", "incremental",
        "posts_label", "sanitize", "timezone", "search", "sidebar_side"}
   return {k: v for k, v in raw.items() if k in allowed}
+
+
+DEFAULT_CONFIG_CONTENT = """# hanma.yml — default site configuration
+# All values here can be overridden by CLI flags.
+# Comment out any line to revert to the built-in default for that setting.
+
+# Site name shown in the page header
+name: Hanma
+
+# Base URL for sitemap.xml and absolute URLs in search.json.
+# Leave empty to use relative URLs (sitemap.xml will not be generated).
+# Example: https://example.com
+base_url: ""
+
+# Output directory for generated HTML (relative to hanma.py, or absolute).
+# Default when unset: output/ relative to hanma.py
+output: output/
+
+# Theme to use from the themes/ directory.
+theme: default
+
+# Sidebar position for themes that support it (e.g., 'narwhal').
+# Options: right, left
+# sidebar_side: right
+
+# Start the local HTTP server after generating.
+# serve: false
+
+# Port for the local HTTP server (only used when serve is true).
+# port: 8000
+
+# Address the HTTP server binds to (127.0.0.1 = loopback only, 0.0.0.0 = all interfaces).
+# host: 127.0.0.1
+
+# Watch source files and regenerate on changes after the initial build.
+# watch: false
+
+# Only regenerate pages whose source file has changed since the last build.
+# incremental: false
+
+# Enable search functionality and show the search box.
+search: true
+
+# Sanitize the generated HTML using 'bleach' if available.
+# sanitize: false
+
+# Label for the posts listing link in the navigation bar.
+# posts_label: Blog
+
+# Timezone for post dates and "last updated" timestamps (e.g., UTC, America/New_York).
+# Default: UTC
+# timezone: UTC
+"""
+
