@@ -1782,3 +1782,41 @@ class TestSitemapLink:
     out = tmp_path / "foo.html"
     result = hanma._sitemap_link(out, None, "https://example.com")
     assert result == '<a href="sitemap.xml">Sitemap</a>'
+
+
+# ===========================================================================
+# 35. generate-default-config CLI option
+# ===========================================================================
+
+
+class TestGenerateDefaultConfig:
+  def test_generate_default_config_custom_path(self, tmp_path):
+    dest = tmp_path / "my-dir" / "config-test.yml"
+    assert not dest.exists()
+    run_hanma("--generate-default-config", str(dest))
+    assert dest.is_file()
+    content = dest.read_text()
+    assert "name: Hanma" in content
+    assert "theme: default" in content
+
+  def test_generate_default_config_default_path(self):
+    from app.cli import _CONF_DIR
+    target = _CONF_DIR / "hanma-defaults.yml"
+    if target.exists():
+      target.unlink()
+    try:
+      run_hanma("--generate-default-config")
+      assert target.is_file()
+      content = target.read_text()
+      assert "name: Hanma" in content
+    finally:
+      if target.exists():
+        target.unlink()
+
+  def test_generate_default_config_error(self, tmp_path):
+    fake_parent = tmp_path / "not_a_dir"
+    fake_parent.write_text("file")
+    dest = fake_parent / "config.yml"
+    result = run_hanma("--generate-default-config", str(dest), expect_ok=False)
+    assert result.returncode != 0
+
