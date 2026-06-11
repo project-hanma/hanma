@@ -29,7 +29,7 @@ from app.scaffold import init_scaffold
 from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
 from app.watch import watch_and_rebuild
 from app._version import __version__
-from app.utils import _THEMES_DIR
+from app.utils import _THEMES_DIR, atomic_write_text
 
 # Anchor for themes/ and conf/ — same directory as hanma.py since all files are siblings
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -152,6 +152,14 @@ Examples:
     action="store_true",
     help="With --init: overwrite existing files in the target directory",
   )
+  parser.add_argument(
+    "--generate-default-config",
+    nargs="?",
+    const=True,
+    default=None,
+    metavar="FILE",
+    help="Generate a default configuration file (default: conf/hanma-defaults.yml) and exit",
+  )
   return parser
 
 
@@ -176,6 +184,24 @@ def _init_scaffold_cmd(force: bool) -> None:
     init_scaffold(site_dir, force=force)
   except RuntimeError as exc:
     sys.exit(str(exc))
+
+
+def _generate_default_config_cmd(target: str | bool) -> None:
+  """Generate a default configuration file and exit."""
+  if target is True:
+    out_path = _CONF_DIR / "hanma-defaults.yml"
+  else:
+    out_path = Path(target).resolve()
+
+  from app.config import DEFAULT_CONFIG_CONTENT
+  
+  try:
+    atomic_write_text(out_path, DEFAULT_CONFIG_CONTENT, encoding="utf-8")
+    print(f"  [create] {out_path.name}")
+    print(f"\nDefault configuration file generated at '{out_path}'.")
+  except Exception as exc:
+    sys.exit(f"Error generating default configuration: {exc}")
+
 
 
 def _resolve_paths(args_path: Optional[str]) -> tuple[Path, Path]:
@@ -238,6 +264,10 @@ def main() -> None:
 
   if args.init:
     _init_scaffold_cmd(args.force)
+    return
+
+  if args.generate_default_config is not None:
+    _generate_default_config_cmd(args.generate_default_config)
     return
 
   root, target = _resolve_paths(args.path)

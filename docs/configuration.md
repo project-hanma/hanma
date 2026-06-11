@@ -26,3 +26,16 @@ Hanma looks for a configuration file in the following order (first found wins):
 2. `conf/hanma.yml` (next to `hanma.py`) — the default location
 3. `hanma.yml` at the root of the source directory
 4. `hanma.yaml` at the root of the source directory (legacy fallback)
+
+## Reference Configuration Generator
+
+To quickly generate a complete skeleton reference configuration file with all available configuration settings and explanatory comments, you can use the `--generate-default-config` CLI option:
+
+```bash
+# Writes to conf/hanma-defaults.yml by default
+./hanma.py --generate-default-config
+
+# Or write to a specific directory and file path
+./hanma.py --generate-default-config path/to/my-config.yml
+```
+
