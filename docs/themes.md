@@ -22,10 +22,12 @@ The `assets/` directory is merged into `output/assets/` during the build process
 
 ## Built-in Themes
 
-Hanma comes with two built-in themes:
+Hanma comes with four built-in themes:
 
 - **default**: A clean, centered layout with a sticky header.
 - **narwhal**: A professional sidebar-centric layout with a premium navy and slate blue color scheme. It supports the `sidebar_side` configuration option.
+- **glassmorphic**: A modern layout featuring a frosted glass aesthetic (glassmorphism) with vibrant ambient background blobs and high-fidelity micro-interactions. It uses the Outfit and Inter typography and supports the `sidebar_side` configuration option.
+- **zengarden**: A serene, minimalist layout inspired by traditional Japanese Zen gardens and paper shoji screens. It features Lora, Noto Serif JP, and Plus Jakarta Sans typography, custom stones-and-ripples SVG iconography, and a tranquil design.
 
 ## Customization
 

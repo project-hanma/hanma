@@ -64,7 +64,7 @@ output: output/
 # Theme to use from the themes/ directory.
 theme: default
 
-# Sidebar position for themes that support it (e.g., 'narwhal').
+# Sidebar position for themes that support it (e.g., 'narwhal', 'glassmorphic').
 # Options: right, left
 # sidebar_side: right
 
