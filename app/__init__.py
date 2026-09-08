@@ -49,7 +49,7 @@ from app.manifest import (
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY,
 )
 from app.convert import convert_md_to_html
-from app.build import _run_build
+from app.build import _run_build, _tag_sort_key
 from app.watch import (
   _HanmaEventHandler, _watch_polling, watch_and_rebuild, _WATCHDOG_AVAILABLE,
 )

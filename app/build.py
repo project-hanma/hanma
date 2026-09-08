@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 """Site building and orchestration logic for Hanma."""
 import sys
-from datetime import datetime
+from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -31,7 +31,7 @@ from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_
 from app.parsing import (
   parse_front_matter, extract_title, extract_description,
   extract_date_dt,
-  localize_datetime
+  localize_datetime, _resolve_tz
 )
 from app.sidecar import build_sitemap_xml, build_search_json, build_rss_xml
 from app.highlight import HIGHLIGHT_CSS
@@ -190,28 +190,60 @@ def _generate_sidecar_files(all_files: list, output_dir: Path,
     print("  [search] skipped (disabled in config)")
 
 
+def _tag_sort_key(entry: tuple, tz_name: Optional[str] = None) -> tuple[int, datetime]:
+  """Sort key for tag listing: dated entries first (by date desc), then undated.
+
+  Normalizes all datetimes (aware, naive, date objects, or string representations)
+  to offset-aware UTC datetimes to prevent TypeError on mixed aware/naive comparison.
+  """
+  _, _, date_val = entry
+  dt: Optional[datetime] = None
+  tz = _resolve_tz(tz_name)
+
+  if isinstance(date_val, datetime):
+    if date_val.tzinfo is not None:
+      dt = date_val.astimezone(timezone.utc)
+    else:
+      dt = date_val.replace(tzinfo=tz).astimezone(timezone.utc)
+  elif isinstance(date_val, date):
+    d = datetime(date_val.year, date_val.month, date_val.day, tzinfo=tz)
+    dt = d.astimezone(timezone.utc)
+  elif isinstance(date_val, str) and date_val.strip():
+    raw = date_val.strip()
+    for fmt in ("%B %d, %Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+      try:
+        parsed = datetime.strptime(raw, fmt)
+        dt = parsed.replace(tzinfo=tz).astimezone(timezone.utc)
+        break
+      except ValueError:
+        pass
+    if dt is None:
+      try:
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is not None:
+          dt = parsed.astimezone(timezone.utc)
+        else:
+          dt = parsed.replace(tzinfo=tz).astimezone(timezone.utc)
+      except (ValueError, TypeError):
+        print(f"Warning: malformed internal date '{date_val}' in tag sort", file=sys.stderr)
+
+  if dt is not None:
+    return (1, dt)
+  return (0, datetime.min.replace(tzinfo=timezone.utc))
+
+
 def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
              nav_pages: list, template, base_url: str, output_dir: Path,
              nav_posts_out: Optional[Path], posts_label: str,
              recent_posts: list, search_enabled: bool = True,
-             sidebar_side: str = "right") -> int:
+             sidebar_side: str = "right",
+             timezone: Optional[str] = None) -> int:
   """Generate tag index pages and return error count."""
   errors = 0
 
-  def _tag_sort_key(entry):
-    _, _, date_val = entry
-    if isinstance(date_val, datetime):
-      return (0, date_val)
-    if isinstance(date_val, str) and date_val:
-      try:
-        return (0, datetime.strptime(date_val, "%B %d, %Y"))
-      except ValueError:
-        print(f"Warning: malformed internal date '{date_val}' in tag sort", file=sys.stderr)
-    return (1, datetime.min)
-
   for tag, tag_pages in tags_map.items():
     tag_out = tag_out_paths[tag]
-    tag_pages_sorted = sorted(tag_pages, key=_tag_sort_key, reverse=True)
+    tag_pages_sorted = sorted(tag_pages, key=lambda e: _tag_sort_key(e, tz_name=timezone), reverse=True)
     try:
       build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
               base_url=base_url, output_root=output_dir,
@@ -264,14 +296,16 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
                 posts_label, recent_posts, search_enabled,
                 has_posts_listing, posts_out_path, dated_pages, 
                 posts_collision, all_files, search_entries,
-                sidebar_side: str = "right") -> int:
+                sidebar_side: str = "right",
+                timezone: Optional[str] = None) -> int:
   """Generate tag indices, posts listing, and sidecar files."""
   errors = 0
   # ── Generate tag index pages ──────────────────────────────────────────
   errors += _generate_tag_indices(
     tags_map, tag_out_paths, site_name, nav_pages, template,
     base_url, output_dir, nav_posts_out, posts_label, recent_posts,
-    search_enabled=search_enabled, sidebar_side=sidebar_side
+    search_enabled=search_enabled, sidebar_side=sidebar_side,
+    timezone=timezone,
   )
 
   # ── Generate posts listing page ───────────────────────────────────────
@@ -460,7 +494,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     tags_map, tag_out_paths, site_name, nav_pages, template, base_url, 
     output_dir, nav_posts_out, posts_label, recent_posts, search_enabled,
     has_posts_listing, posts_out_path, dated_pages, posts_collision, all_files, 
-    search_entries, sidebar_side=sidebar_side
+    search_entries, sidebar_side=sidebar_side, timezone=timezone
   )
 
   if incremental and manifest_path is not None:
