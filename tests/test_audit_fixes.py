@@ -175,3 +175,93 @@ def test_quiet_handler_directory_init():
         _, kwargs = mock_super_init.call_args
         assert kwargs.get("directory") == "/path/to/serve_dir"
 
+
+# ---------------------------------------------------------------------------
+# 3. Datetime & Tag Sorting Fixes
+# ---------------------------------------------------------------------------
+
+def test_tag_sort_key_mixed_aware_naive_datetimes():
+    """Verify _tag_sort_key safely sorts mixed aware, naive, string, and missing dates."""
+    from datetime import datetime, date, timezone
+    from zoneinfo import ZoneInfo
+    from app.build import _tag_sort_key
+
+    entries = [
+        (Path("undated.html"), "Undated", None),
+        (Path("aware_utc.html"), "Aware UTC 2026", datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)),
+        (Path("naive_2025.html"), "Naive 2025", datetime(2025, 6, 1, 12, 0)),
+        (Path("aware_ny.html"), "Aware NY 2026", datetime(2026, 7, 1, 12, 0, tzinfo=ZoneInfo("America/New_York"))),
+        (Path("str_human.html"), "String Human", "March 15, 2025"),
+        (Path("str_iso.html"), "String ISO", "2024-12-01"),
+        (Path("date_obj.html"), "Date Obj", date(2024, 1, 1)),
+        (Path("malformed.html"), "Malformed", "not-a-valid-date"),
+    ]
+
+    # Must sort without raising TypeError: can't compare offset-naive and offset-aware datetimes
+    sorted_entries = sorted(entries, key=_tag_sort_key, reverse=True)
+    sorted_titles = [t for _, t, _ in sorted_entries]
+
+    # Newest to oldest:
+    # 1. Aware NY 2026 (July 2026)
+    # 2. Aware UTC 2026 (Jan 2026)
+    # 3. Naive 2025 (June 2025)
+    # 4. String Human (March 2025)
+    # 5. String ISO (Dec 2024)
+    # 6. Date Obj (Jan 2024)
+    # 7 & 8: Undated / Malformed (sorted at the end)
+    assert sorted_titles[:6] == [
+        "Aware NY 2026",
+        "Aware UTC 2026",
+        "Naive 2025",
+        "String Human",
+        "String ISO",
+        "Date Obj",
+    ]
+    assert set(sorted_titles[6:]) == {"Undated", "Malformed"}
+
+
+def test_tag_sort_key_with_configured_timezone():
+    """Verify _tag_sort_key honors tz_name when normalizing naive datetimes."""
+    from datetime import datetime, timezone
+    from app.build import _tag_sort_key
+
+    # 2025-01-01 02:00:00 in Asia/Tokyo is 2024-12-31 17:00:00 UTC
+    # 2025-01-01 00:00:00 in UTC is 2025-01-01 00:00:00 UTC
+    # In UTC, 2025-01-01 00:00:00 UTC is NEWER than 2024-12-31 17:00:00 UTC.
+    tokyo_naive = (Path("tokyo.html"), "Tokyo Naive", datetime(2025, 1, 1, 2, 0))
+    utc_aware = (Path("utc.html"), "UTC Aware", datetime(2025, 1, 1, 0, 0, tzinfo=timezone.utc))
+
+    key_tokyo = _tag_sort_key(tokyo_naive, tz_name="Asia/Tokyo")
+    key_utc = _tag_sort_key(utc_aware, tz_name="Asia/Tokyo")
+
+    assert key_utc[1] > key_tokyo[1]
+
+
+def test_tag_index_site_generation_mixed_dates(tmp_path):
+    """End-to-end integration test: generate tag index containing mixed dates and verify order."""
+    from tests.helpers import run_hanma, write_file
+
+    write_file(tmp_path / "page_new.md", "---\ntitle: Newest Post\ndate: 2026-03-01\ntags:\n  - tech\n---\n# New")
+    write_file(tmp_path / "page_old.md", "---\ntitle: Oldest Post\ndate: 2024-01-01\ntags:\n  - tech\n---\n# Old")
+    write_file(tmp_path / "page_undated.md", "---\ntitle: Undated Post\ntags:\n  - tech\n---\n# Undated")
+
+    out_dir = tmp_path / "out"
+    res = run_hanma(str(tmp_path), "--output", str(out_dir))
+    assert res.returncode == 0, f"Build failed with: {res.stderr}\n{res.stdout}"
+
+    tag_file = out_dir / "tags" / "tech.html"
+    assert tag_file.exists()
+    content = tag_file.read_text(encoding="utf-8")
+
+    # Verify all posts are present
+    assert "Newest Post" in content
+    assert "Oldest Post" in content
+    assert "Undated Post" in content
+
+    # Verify descending date order (newest first, undated last)
+    idx_new = content.index("Newest Post")
+    idx_old = content.index("Oldest Post")
+    idx_undated = content.index("Undated Post")
+    assert idx_new < idx_old < idx_undated
+
+
