@@ -65,14 +65,6 @@ def compute_text_hash(text: str) -> str:
   return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def compute_file_hash(path: Path) -> str:
-  """Return SHA256 hash of file content."""
-  try:
-    return compute_text_hash(path.read_text(encoding="utf-8"))
-  except OSError:
-    return ""
-
-
 def load_build_manifest(manifest_path: Path) -> dict:
   """Load JSON manifest mapping str(md_path) -> sha256 hash. Returns {} on miss."""
   if not manifest_path.is_file():

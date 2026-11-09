@@ -32,7 +32,7 @@ from app.utils import _THEMES_DIR, get_root_rel
 
 # ── Re-exports ────────────────────────────────────────────────────────────────
 from app.config import load_site_config
-from app.highlight import HIGHLIGHT_CSS, _build_highlight_css
+from app.highlight import _build_highlight_css
 from app.parsing import (
   parse_front_matter, extract_title, extract_description,
   parse_date_field,
@@ -64,3 +64,9 @@ def load_theme(name: str) -> tuple:
   app._THEMES_DIR and have load_theme() honour the patched value.
   """
   return _load_theme_impl(name, _THEMES_DIR)
+
+
+def __getattr__(name: str):
+  if name == "HIGHLIGHT_CSS":
+    return _build_highlight_css()
+  raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

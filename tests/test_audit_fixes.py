@@ -265,3 +265,332 @@ def test_tag_index_site_generation_mixed_dates(tmp_path):
     assert idx_new < idx_old < idx_undated
 
 
+# ---------------------------------------------------------------------------
+# 4. Watch Mode Fixes (Stage 1)
+# ---------------------------------------------------------------------------
+
+def test_watch_event_handler_detects_theme_template_html(tmp_path):
+    """Verify _HanmaEventHandler triggers on theme_dir/template.html but ignores output .html files."""
+    from app.watch import _HanmaEventHandler
+
+    src_dir = tmp_path / "site"
+    theme_dir = tmp_path / "themes" / "custom"
+    out_dir = tmp_path / "output"
+    src_dir.mkdir()
+    theme_dir.mkdir(parents=True)
+    out_dir.mkdir()
+
+    handler = _HanmaEventHandler(lambda: None, src_dir, theme_dir, output_dir=out_dir)
+
+    # Regular .html in source or output must be ignored
+    assert handler._is_relevant(str(src_dir / "page.html")) is False
+    assert handler._is_relevant(str(out_dir / "index.html")) is False
+
+    # template.html inside theme_dir must be relevant
+    assert handler._is_relevant(str(theme_dir / "template.html")) is True
+
+
+def test_watch_and_rebuild_forwards_sidebar_side(tmp_path):
+    """Verify watch_and_rebuild and _watch_polling accept and forward sidebar_side."""
+    import inspect
+    from app.watch import watch_and_rebuild, _watch_polling
+
+    sig_watch = inspect.signature(watch_and_rebuild)
+    sig_poll = inspect.signature(_watch_polling)
+    assert "sidebar_side" in sig_watch.parameters
+    assert sig_watch.parameters["sidebar_side"].default == "right"
+    assert "sidebar_side" in sig_poll.parameters
+    assert sig_poll.parameters["sidebar_side"].default == "right"
+
+
+# ---------------------------------------------------------------------------
+# 5. Core Build & CLI Fixes (Stage 2)
+# ---------------------------------------------------------------------------
+
+def test_tag_slug_collision_merges_pages_and_skips_empty_slugs(tmp_path):
+    """Issue 2.2: Tags normalizing to the same slug merge rather than overwrite; empty slugs skipped."""
+    from tests.helpers import run_hanma, write_file
+
+    write_file(tmp_path / "post_a.md", "---\ntitle: Post A\ntags:\n  - Python\n  - '+++'\n---\n# Post A")
+    write_file(tmp_path / "post_b.md", "---\ntitle: Post B\ntags:\n  - python\n---\n# Post B")
+
+    out_dir = tmp_path / "out"
+    res = run_hanma(str(tmp_path), "--output", str(out_dir))
+    assert res.returncode == 0
+
+    tag_file = out_dir / "tags" / "python.html"
+    assert tag_file.exists()
+    tag_html = tag_file.read_text(encoding="utf-8")
+    assert "Post A" in tag_html
+    assert "Post B" in tag_html
+    assert not (out_dir / "tags" / ".html").exists()
+
+
+def test_non_integer_sort_index_warns_and_does_not_crash(tmp_path):
+    """Issue 2.4: Non-integer sort_index logs a warning and falls back to None without crashing."""
+    from tests.helpers import run_hanma, write_file
+
+    write_file(tmp_path / "bad_sort.md", "---\ntitle: Bad Sort\nsort_index: invalid_int\n---\n# Hello")
+    out_dir = tmp_path / "out"
+    res = run_hanma(str(tmp_path), "--output", str(out_dir))
+    assert res.returncode == 0
+    assert "Warning: invalid sort_index" in res.stderr
+    assert (out_dir / "bad_sort.html").exists()
+
+
+def test_nested_page_sitemap_link_is_relative(tmp_path):
+    """Issue 2.5: Subdirectory pages must link to ../sitemap.xml instead of bare sitemap.xml."""
+    from tests.helpers import run_hanma, write_file
+
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    write_file(tmp_path / "posts" / "nested.md", "# Nested Post\n\nBody.")
+    out_dir = tmp_path / "out"
+    res = run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    assert res.returncode == 0
+
+    nested_html = (out_dir / "posts" / "nested.html").read_text(encoding="utf-8")
+    assert 'href="../sitemap.xml"' in nested_html
+
+
+def test_invalid_port_and_sidebar_side_validation(tmp_path):
+    """Issue 2.7: Out-of-bounds ports exit cleanly; invalid sidebar_side defaults to right."""
+    from tests.helpers import run_hanma, write_file
+
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    out_dir = tmp_path / "out"
+
+    # Out-of-bounds CLI port must exit non-zero with clear error
+    res_port = run_hanma(str(tmp_path), "--output", str(out_dir), "--port", "70000", expect_ok=False)
+    assert res_port.returncode != 0
+    assert "Port must be between 1 and 65535" in res_port.stderr
+
+    # Invalid sidebar_side in config warns and falls back to right
+    cfg = tmp_path / "hanma.yml"
+    cfg.write_text("theme: narwhal\nsidebar_side: upside_down\n", encoding="utf-8")
+    res_side = run_hanma(str(tmp_path), "--output", str(out_dir), "--config", str(cfg))
+    assert res_side.returncode == 0
+    assert "Warning: invalid sidebar_side" in res_side.stderr
+    html_out = (out_dir / "index.html").read_text(encoding="utf-8")
+    assert "sidebar-right" in html_out
+
+
+def test_sitemap_lastmod_uses_source_mtime(tmp_path):
+    """Issue 2.8: sitemap.xml <lastmod> reflects source file mtime rather than build time."""
+    from tests.helpers import run_hanma, write_file
+
+    md_file = write_file(tmp_path / "page.md", "# Historical Page\n\nContent.")
+    # Set mtime to 2021-06-15 12:00:00 UTC (1623758400)
+    os.utime(md_file, (1623758400, 1623758400))
+
+    out_dir = tmp_path / "out"
+    res = run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
+    assert res.returncode == 0
+
+    sitemap_xml = (out_dir / "sitemap.xml").read_text(encoding="utf-8")
+    assert "<lastmod>2021-06-15</lastmod>" in sitemap_xml
+
+
+# ---------------------------------------------------------------------------
+# 6. Security Hardening Fixes (Stage 3)
+# ---------------------------------------------------------------------------
+
+def test_nav_link_url_blocks_unsafe_schemes(tmp_path):
+    """Issue 3.1: Front matter link.url with javascript:, data:, or vbscript: must be ignored."""
+    from app.nav import get_nav_data
+
+    out_home = tmp_path / "index.html"
+    out_evil = tmp_path / "evil.html"
+    out_safe = tmp_path / "safe.html"
+
+    nav_pages = [
+        (out_home, "Home", tmp_path / "index.md", "page", 1, None),
+        (out_evil, "Evil", tmp_path / "evil.md", "page", 2, {"url": "javascript:alert(1)"}),
+        (out_safe, "Safe", tmp_path / "safe.md", "page", 3, {"url": "https://example.com/docs"}),
+    ]
+    nav_items = get_nav_data(out_home, nav_pages, output_root=tmp_path)
+    urls = {item["title"]: item["url"] for item in nav_items}
+
+    assert urls["Evil"] == "evil.html"
+    assert "javascript:" not in urls["Evil"]
+    assert urls["Safe"] == "https://example.com/docs"
+
+
+def test_build_ignores_symlinks_pointing_outside_source_root(tmp_path):
+    """Issue 3.2: Symlinks in site/ or site/static/ pointing outside root must not be read or copied."""
+    from app.files import find_markdown_files, copy_static_assets
+    from tests.helpers import write_file
+
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    site_dir.mkdir()
+    out_dir.mkdir()
+
+    external_md = write_file(tmp_path / "outside_secret.md", "# Secret Outside\n\nDo not leak.")
+    external_txt = write_file(tmp_path / "outside_static.txt", "SECRET_STATIC_CONTENT")
+
+    write_file(site_dir / "legit.md", "# Legit\n\nInside site.")
+    (site_dir / "leaked.md").symlink_to(external_md)
+
+    static_dir = site_dir / "static"
+    static_dir.mkdir()
+    write_file(static_dir / "ok.txt", "OK")
+    (static_dir / "leak.txt").symlink_to(external_txt)
+
+    md_files = find_markdown_files(site_dir)
+    assert [p.name for p in md_files] == ["legit.md"]
+
+    copy_static_assets(site_dir, out_dir)
+    assert (out_dir / "static" / "ok.txt").exists()
+    assert not (out_dir / "static" / "leak.txt").exists()
+
+
+def test_extract_description_strips_html_and_script_tags():
+    """Issue 3.4: extract_description strips inline HTML and script/style blocks."""
+    from app.parsing import extract_description
+
+    md = "# Heading\n\n<script>alert('xss')</script>\n<div class=\"lead\">Clean <b>text</b> here.</div>"
+    assert extract_description(md) == "Clean text here."
+
+
+# ---------------------------------------------------------------------------
+# 7. Performance Optimizations (Stage 4)
+# ---------------------------------------------------------------------------
+
+def test_differential_static_asset_sync_and_pruning(tmp_path):
+    """Issue 4.2: Unchanged static files are not rewritten; deleted static files are pruned."""
+    from app.files import copy_static_assets
+    from tests.helpers import write_file
+
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    static_src = site_dir / "static"
+    static_src.mkdir(parents=True)
+    out_dir.mkdir()
+
+    f_keep = write_file(static_src / "keep.txt", "keep")
+    f_del = write_file(static_src / "sub" / "delete_me.txt", "delete")
+
+    # Initial sync
+    copy_static_assets(site_dir, out_dir)
+    dest_keep = out_dir / "static" / "keep.txt"
+    dest_del = out_dir / "static" / "sub" / "delete_me.txt"
+    assert dest_keep.exists()
+    assert dest_del.exists()
+    inode_before = dest_keep.stat().st_ino
+
+    # Delete f_del in source and sync again
+    f_del.unlink()
+    copy_static_assets(site_dir, out_dir)
+
+    assert dest_keep.exists()
+    assert dest_keep.stat().st_ino == inode_before  # Not deleted & recreated
+    assert not dest_del.exists()
+    assert not (out_dir / "static" / "sub").exists()  # Empty parent dir pruned
+
+
+def test_lazy_highlight_css_attribute_access():
+    """Issue 4.6: HIGHLIGHT_CSS is lazily evaluated via module __getattr__ and cached."""
+    import app
+    import app.highlight
+
+    css1 = app.HIGHLIGHT_CSS
+    css2 = app.highlight.HIGHLIGHT_CSS
+    assert css1 == css2
+    assert ".highlight" in css1
+
+
+# ---------------------------------------------------------------------------
+# 8. HTML & CSS Sanitization (Bleach)
+# ---------------------------------------------------------------------------
+
+def test_sanitization_strips_script_tag(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# Hello\n<script>alert('xss')</script>\nWorld", encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert "<script>" not in html_content
+    assert "alert('xss')" in html_content
+    assert '<h1 id="hello">Hello' in html_content
+    assert "World" in html_content
+
+
+def test_sanitization_preserves_safe_html(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# Hello\n\n**Bold** and *Italic*\n\n[Link](https://example.com)", encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert '<h1 id="hello">Hello' in html_content
+    assert "<strong>Bold</strong>" in html_content
+    assert "<em>Italic</em>" in html_content
+    assert 'href="https://example.com"' in html_content
+
+
+def test_sanitization_preserves_tables(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("| Col 1 | Col 2 |\n|---|---|\n| Val 1 | Val 2 |", encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert "<table>" in html_content
+    assert "<thead>" in html_content
+    assert "<tbody>" in html_content
+    assert "<th>Col 1</th>" in html_content
+    assert "<td>Val 1</td>" in html_content
+
+
+def test_sanitization_preserves_code_highlighting(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("```python\nprint('hello')\n```", encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert '<div class="highlight">' in html_content
+    assert "<pre>" in html_content
+    assert "<span class=" in html_content
+
+
+def test_sanitization_disabled_by_default(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("<script>alert('xss')</script>", encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site")
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert "<script>alert('xss')</script>" in html_content
+
+
+def test_sanitization_strips_style_and_unpermitted_class_id(tmp_path):
+    md_file = tmp_path / "test.md"
+    md_text = (
+        "---\n"
+        "description: Safe Description\n"
+        "---\n"
+        '<span style="color: red; position: fixed;">Style Test</span>\n'
+        '<img class="img-class" id="img-id" src="image.png" alt="img" />\n'
+        '<div class="allowed-class" id="allowed-id">Allowed Div</div>'
+    )
+    md_file.write_text(md_text, encoding="utf-8")
+    out_file = tmp_path / "test.html"
+
+    convert_md_to_html(md_file, out_file, "Test Site", sanitize=True)
+
+    html_content = out_file.read_text(encoding="utf-8")
+    assert "<span>Style Test</span>" in html_content
+    assert "color: red" not in html_content
+    assert "image.png" in html_content
+    assert "img-class" not in html_content
+    assert "img-id" not in html_content
+    assert 'class="allowed-class"' in html_content
+    assert 'id="allowed-id"' in html_content
+
