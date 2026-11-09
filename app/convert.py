@@ -28,7 +28,7 @@ except ImportError:
     Markup = str  # type: ignore
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 try:
   import markdown
@@ -49,19 +49,77 @@ except ImportError as exc:
 
 try:
   import bleach
-  from bleach.css_sanitizer import CSSSanitizer
+  from bleach.css_sanitizer import CSSSanitizer as _CSSSanitizerCls
   _BLEACH_AVAILABLE = True
+  _CSS_SANITIZER: Optional[Any] = _CSSSanitizerCls()
 except ImportError:
   _BLEACH_AVAILABLE = False
-  CSSSanitizer = None
+  _CSS_SANITIZER = None
 
 from app.nav import get_nav_data
-from app.pages import _normalize_tag, _search_json_url
+from app.pages import _normalize_tag, _search_json_url, _sitemap_link
 from app.parsing import (
   parse_front_matter, extract_title, extract_description,
   parse_date_field, localize_datetime
 )
 from app.utils import get_root_rel, _THEMES_DIR, atomic_write_text
+
+_ALLOWED_TAGS = [
+  'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol',
+  'strong', 'ul', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'div',
+  'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
+  'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
+]
+
+_ALLOWED_CLASS_TAGS = {
+  'a', 'abbr', 'b', 'blockquote', 'code', 'del', 'details', 'div', 'dl', 'dt', 'dd',
+  'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'li', 'ol', 'p', 'pre',
+  'span', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+}
+
+_ALLOWED_ID_TAGS = {
+  'a', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'p', 'pre', 'span', 'sup', 'table'
+}
+
+
+def _build_allowed_attrs() -> dict[str, list[str]]:
+  attrs: dict[str, list[str]] = {
+    'a': ['href', 'title', 'rel', 'aria-current'],
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+  }
+  for tag in _ALLOWED_CLASS_TAGS:
+    attrs.setdefault(tag, []).append('class')
+  for tag in _ALLOWED_ID_TAGS:
+    attrs.setdefault(tag, []).append('id')
+  return attrs
+
+
+_ALLOWED_ATTRS = _build_allowed_attrs()
+_MD_INSTANCE: Optional[markdown.Markdown] = None
+
+
+def _get_markdown_instance() -> markdown.Markdown:
+  """Return a reusable Markdown instance, resetting state before each conversion."""
+  global _MD_INSTANCE  # pylint: disable=global-statement
+  if _MD_INSTANCE is None:
+    extensions: list[str | markdown.extensions.Extension] = [
+      MetaExtension(),
+      TocExtension(permalink=True, toc_depth="2-4"),
+      FencedCodeExtension(),
+      CodeHiliteExtension(css_class="highlight", guess_lang=True, noclasses=False),
+      TableExtension(),
+      FootnoteExtension(),
+      AttrListExtension(),
+      DefListExtension(),
+      AbbrExtension(),
+      "markdown.extensions.nl2br",
+      "markdown.extensions.sane_lists",
+      "markdown.extensions.smarty",
+    ]
+    _MD_INSTANCE = markdown.Markdown(extensions=extensions, output_format="html")
+  else:
+    _MD_INSTANCE.reset()
+  return _MD_INSTANCE
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             nav_pages: Optional[list] = None,
@@ -84,7 +142,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
 
   nav_pages is a list of (out_html_path, title, md_path, layout, sort_index) tuples for
   every page being generated, used to build the cross-page navigation bar.
-  template is a string.Template loaded from the active theme; defaults to
+  template is a jinja2.Template loaded from the active theme; defaults to
   the built-in default theme when not supplied.
   tags_out_dir is the output directory for tag index pages; when provided,
   tag names in the tag strip become clickable links.
@@ -114,19 +172,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   # Build a human-readable date string from front matter date field
   fm_date_str = parse_date_field(fm_date_raw, tz_name=timezone, source_path=md_path)
 
-  # Footer attribution line (author and/or date)
-  fm_author_esc = html.escape(fm_author)
-  parts = []
-  if fm_author:
-    parts.append(f"By <em>{fm_author_esc}</em>")
-  if fm_date_str:
-    parts.append(fm_date_str)
-  
-  if parts:
-    author_line = ", ".join(parts) + " &nbsp;&middot;&nbsp; "
-  else:
-    author_line = ""
-
   # Meta tags for head
   author_meta = Markup(f'<meta name="author" content="{html.escape(fm_author)}" />\n  ') if fm_author else "" # type: ignore
   if isinstance(fm_tags, list) and fm_tags:
@@ -151,59 +196,21 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     print("Warning: sanitization requested but 'bleach' is not installed. HTML will NOT be sanitized.", file=sys.stderr)
     print("To fix, run: pip install bleach tinycss2", file=sys.stderr)
 
-  extensions = [
-    MetaExtension(),
-    TocExtension(permalink=True, toc_depth="2-4"),
-    FencedCodeExtension(),
-    CodeHiliteExtension(css_class="highlight", guess_lang=True, noclasses=False),
-    TableExtension(),
-    FootnoteExtension(),
-    AttrListExtension(),
-    DefListExtension(),
-    AbbrExtension(),
-    "markdown.extensions.nl2br",
-    "markdown.extensions.sane_lists",
-    "markdown.extensions.smarty",
-  ]
-
-  md = markdown.Markdown(extensions=extensions, output_format="html")
+  md = _get_markdown_instance()
   content_html = md.convert(body)
 
   # ── Sanitization ────────────────────────────────────────────────────────
   def _clean_if_needed(html_str: str) -> str:
     if sanitize and _BLEACH_AVAILABLE:
-      # Use a permissive set of tags/attributes to avoid breaking Markdown extensions
-      # like TOC, syntax highlighting, and tables, while still stripping <script>, etc.
-      # Also allow some attrs used by Hanma's nav/tag generation.
-      allowed_tags = [
-        'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol',
-        'strong', 'ul', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'div',
-        'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
-        'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
-      ]
-      allowed_class_tags = {
-        'a', 'abbr', 'b', 'blockquote', 'code', 'del', 'details', 'div', 'dl', 'dt', 'dd',
-        'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'li', 'ol', 'p', 'pre',
-        'span', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
-      }
-      allowed_id_tags = {
-        'a', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'p', 'pre', 'span', 'sup', 'table'
-      }
-
-      allowed_attrs = {
-        'a': ['href', 'title', 'rel', 'aria-current'],
-        'img': ['src', 'alt', 'title', 'width', 'height'],
-      }
-      for tag in allowed_class_tags:
-        allowed_attrs.setdefault(tag, []).append('class')
-      for tag in allowed_id_tags:
-        allowed_attrs.setdefault(tag, []).append('id')
-      css_san = CSSSanitizer() if CSSSanitizer else None
-      return bleach.clean(html_str, tags=allowed_tags, attributes=allowed_attrs, css_sanitizer=css_san)
+      return bleach.clean(
+        html_str,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRS,
+        css_sanitizer=_CSS_SANITIZER,
+      )
     return html_str
 
   content_html = _clean_if_needed(content_html)
-  author_line = _clean_if_needed(author_line)
 
   # Build structured tags for templates
   page_tags = []
@@ -212,7 +219,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
       tag_name = str(t)
       slug = _normalize_tag(tag_name)
       tag_url = None
-      if tags_out_dir is not None:
+      if tags_out_dir is not None and slug:
         tag_url = f"tags/{slug}.html"
       page_tags.append({"name": tag_name, "slug": slug, "url": tag_url})
 
@@ -226,7 +233,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
   source_rel = md_path.name
 
-  sitemap_link = _clean_if_needed('<a href="sitemap.xml">Sitemap</a>' if base_url else "")
+  sitemap_link = _clean_if_needed(_sitemap_link(out_path, output_root, base_url))
   
   if search_enabled:
     search_url = _clean_if_needed(_search_json_url(out_path, output_root, base_url))
@@ -256,7 +263,6 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     author_meta=author_meta,
     keywords_meta=keywords_meta,
     refresh_meta=refresh_meta,
-    author_line=author_line,
     site_name=site_name,
     content=content_html,
     nav_items=nav_items,

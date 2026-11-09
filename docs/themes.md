@@ -45,15 +45,17 @@ To create a custom theme:
 | `site_name` | string | Site name from `--name` or config |
 | `content` | string | **(HTML)** Rendered page content (use `{{ content | safe }}`) |
 | `nav_items` | list | Structured navigation data for custom loops |
-| `page_tags` | list | Structured list of tags for the current page: `[{"name": "...", "url": "..."}]` |
-| `author_line` | string | **(HTML)** Author/date attribution (use `{{ author_line | safe }}`) |
-| `author_meta` | string | **(HTML)** `<meta name="author">` tag |
-| `keywords_meta` | string | **(HTML)** `<meta name="keywords">` tag |
-| `refresh_meta` | string | **(HTML)** `<meta http-equiv="refresh">` tag |
+| `root_rel` | string | Relative path prefix to the output root (e.g., `""` or `"../"`) |
+| `page_tags` | list | Structured list of tags for the current page: `[{"name": "...", "slug": "...", "url": "..."}]` |
+| `author` | string | Author name from front matter |
+| `page_date` | string | Formatted front matter date (e.g., `"November 09, 2026"`) |
+| `author_meta` | string | **(HTML)** `<meta name="author">` tag (use `{{ author_meta | safe }}`) |
+| `keywords_meta` | string | **(HTML)** `<meta name="keywords">` tag (use `{{ keywords_meta | safe }}`) |
+| `refresh_meta` | string | **(HTML)** `<meta http-equiv="refresh">` tag (use `{{ refresh_meta | safe }}`) |
 | `source_file` | string | Source `.md` filename |
-| `last_updated` | string | File modification timestamp |
-| `sitemap_link` | string | **(HTML)** Link to `sitemap.xml` |
-| `search_json_url` | string | URL to `search.json` (relative or absolute) |
+| `last_updated` | string | **(HTML)** Localized modification/generation timestamp (use `{{ last_updated | safe }}`) |
+| `sitemap_link` | string | **(HTML)** Relative or absolute link to `sitemap.xml` (use `{{ sitemap_link | safe }}`) |
+| `search_json_url` | string | URL to `search.json` (relative or absolute; empty string when `search: false`) |
 | `base_url` | string | Absolute base URL from config |
 | `page_url` | string | URL of the current page relative to output root |
 | `sidebar_side` | string | Sidebar position (`left` or `right`) for supported themes |

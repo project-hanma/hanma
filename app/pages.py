@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.nav import get_nav_data
+from app.parsing import get_localized_now
 from app.utils import get_root_rel, atomic_write_text
 
 
@@ -74,12 +75,13 @@ def _make_generated_page(content_html: str, title: str, description: str,
              posts_label: str = "Blog",
              recent_posts: Optional[list] = None,
              search_enabled: bool = True,
-             sidebar_side: str = "right") -> Path:
+             sidebar_side: str = "right",
+             timezone: Optional[str] = None) -> Path:
   """Render a generated (non-markdown) page using the active theme template."""
   nav_items = get_nav_data(out_path, nav_pages, output_root=output_root,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
-  now = datetime.now()
+  now = get_localized_now(timezone)
   titles_match = site_name and title.lower() == site_name.lower()
   if site_name and not titles_match:
     display_title = f"{site_name} - {title}"
@@ -94,7 +96,6 @@ def _make_generated_page(content_html: str, title: str, description: str,
     author_meta="",
     keywords_meta="",
     refresh_meta="",
-    author_line="",
     site_name=site_name,
     content=content_html,
     nav_items=nav_items,
@@ -120,7 +121,8 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
              posts_label: str = "Blog",
              recent_posts: Optional[list] = None,
              search_enabled: bool = True,
-             sidebar_side: str = "right") -> Path:
+             sidebar_side: str = "right",
+             timezone: Optional[str] = None) -> Path:
   """Generate a tag index page listing all pages tagged with tag.
 
   pages is a list of (out_html_path, title, date_val) tuples, sorted by date.
@@ -161,6 +163,7 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
     recent_posts=recent_posts,
     search_enabled=search_enabled,
     sidebar_side=sidebar_side,
+    timezone=timezone,
   )
 
 
@@ -173,7 +176,8 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
                posts_out: Optional[Path] = None,
                recent_posts: Optional[list] = None,
                search_enabled: bool = True,
-               sidebar_side: str = "right") -> Path:
+               sidebar_side: str = "right",
+               timezone: Optional[str] = None) -> Path:
   """Generate posts.html listing all layout='post' pages, newest first.
 
   dated_pages is a list of (out_html_path, title, date_dt, description) tuples.
@@ -217,4 +221,5 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
     recent_posts=recent_posts,
     search_enabled=search_enabled,
     sidebar_side=sidebar_side,
+    timezone=timezone,
   )

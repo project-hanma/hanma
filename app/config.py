@@ -29,7 +29,8 @@ except ImportError as exc:
 def load_site_config(config_path: Path) -> dict:
   """Load hanma.yml (or hanma.yaml) from config_path. Returns {} if absent or invalid.
 
-  Recognized fields: name, base_url, output, theme, serve, port, watch, incremental.
+  Recognized fields: name, base_url, output, theme, serve, port, host, watch,
+  incremental, posts_label, sanitize, timezone, search, sidebar_side.
   """
   if not config_path.is_file():
     return {}

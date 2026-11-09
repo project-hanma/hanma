@@ -18,20 +18,21 @@ Use this skill when creating or editing Markdown content, managing the `hanma.ym
 ## Front Matter (YAML)
 Supported fields at the top of Markdown files:
 - `title`, `description`: Overrides auto-extracted H1/first paragraph.
-- `author`, `date`: Shown in footer and meta tags.
+- `author`, `date`: Shown in footer and meta tags (`date` supports `YYYY-MM-DD` or `YYYY-MM-DD HH:MM[:SS]`).
 - `tags`: Generates tag pages under `tags/<slug>.html`.
 - `draft: true`: Skips the page entirely.
 - `layout`: `page` (default) or `post` (default for `posts/`).
 - `sort_index`: Controls ordering in navigation (lower = first).
-- `refresh`: Auto-refresh interval (meta tag).
+- `refresh`: Auto-refresh interval in seconds (`1..86400`, meta tag).
+- `link`: Navigation link override (`url` and `target`: `tab`, `window`, or `same`).
 
 ## Site Configuration (`hanma.yml`)
 Priority: `--config` flag > `conf/hanma.yml` > root `hanma.yml`.
-Common fields: `name`, `base_url`, `output`, `theme`, `posts_label`, `serve`, `port`, `host`, `watch`, `incremental`, `sanitize`, `timezone`.
+Common fields: `name`, `base_url`, `output`, `theme`, `posts_label`, `serve`, `port`, `host`, `watch`, `incremental`, `sanitize`, `timezone`, `search`, `sidebar_side`.
 
 ## Theme Development
 - Located in `themes/<theme_name>/`.
-- Must contain Jinja2 templates (e.g., `page.html`, `post.html`).
-- Supported template variables:
-  - `$title`, `$description`, `$site_name`, `$content`, `$nav`, `$date_str`, `$author_meta`, `$keywords_meta`, `$author_line`, `$source_file`, `$last_updated`, `$sitemap_link`, `$search_json_url`.
+- Must contain a Jinja2 template file named `template.html`.
+- Supported Jinja2 template variables:
+  - `{{ title }}`, `{{ description }}`, `{{ site_name }}`, `{{ content | safe }}`, `{{ nav_items }}`, `{{ root_rel }}`, `{{ page_tags }}`, `{{ base_url }}`, `{{ page_url }}`, `{{ author }}`, `{{ page_date }}`, `{{ author_meta | safe }}`, `{{ keywords_meta | safe }}`, `{{ refresh_meta | safe }}`, `{{ source_file }}`, `{{ last_updated | safe }}`, `{{ sitemap_link | safe }}`, `{{ search_json_url }}`, `{{ sidebar_side }}`.
 - Assets in the theme's `assets/` directory are copied and merged into the output `assets/` directory.

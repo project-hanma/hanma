@@ -23,6 +23,7 @@ import importlib
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,8 @@ class TestSyntax:
   def test_py_compile(self):
     import py_compile
     py_compile.compile(str(SSG), doraise=True)
+    for py_file in (SSG.parent / "app").glob("*.py"):
+      py_compile.compile(str(py_file), doraise=True)
 
 
 # ===========================================================================
@@ -747,7 +750,7 @@ class TestXSSEscaping:
     assert "<script>alert(1)</script>" not in html_text
     assert "&lt;script&gt;" in html_text
 
-  def test_author_xss_escaped_in_author_line(self, tmp_path):
+  def test_author_xss_escaped(self, tmp_path):
     src = write_file(tmp_path / "page.md",
           '---\nauthor: "</em><script>xss</script>"\n---\n# T\n\nContent.')
     out = tmp_path / "page.html"
@@ -1819,4 +1822,140 @@ class TestGenerateDefaultConfig:
     dest = fake_parent / "config.yml"
     result = run_hanma("--generate-default-config", str(dest), expect_ok=False)
     assert result.returncode != 0
+
+
+# ===========================================================================
+# 36. Recent Posts Navigation Dropdown
+# ===========================================================================
+
+
+class TestRecentPostsDropdown:
+  def test_recent_posts_dropdown(self, tmp_path):
+    write_file(tmp_path / "index.md", "# Home\n\nWelcome.")
+    for i in range(1, 8):
+      write_file(
+        tmp_path / "posts" / f"post{i}.md",
+        f"---\ntitle: Post {i}\ndate: 2026-04-0{i}\n---\nPost content {i}.",
+      )
+
+    out_dir = tmp_path / "out"
+    run_hanma(str(tmp_path), "--output", str(out_dir))
+
+    index_html = (out_dir / "index.html").read_text(encoding="utf-8")
+
+    # Should find Post 7, 6, 5, 4, 3 (the 5 newest), and NOT Post 2, 1
+    for i in range(3, 8):
+      assert f"Post {i}" in index_html
+    for i in range(1, 3):
+      assert f"Post {i}" not in index_html
+
+    assert 'href="posts/index.html"' in index_html
+    assert "nav-more-posts" in index_html
+    assert "nav-more-posts-sep" in index_html
+
+
+# ===========================================================================
+# 37. Post Date / Time Sorting & Timezone Localization
+# ===========================================================================
+
+
+class TestTimeHandling:
+  def test_front_matter_date_overrides_mtime_for_sorting(self, tmp_path):
+    old_post = tmp_path / "posts" / "old_mtime.md"
+    new_post = tmp_path / "posts" / "new_mtime.md"
+
+    write_file(old_post, "---\ndate: 2025-05-01\n---\n# Newer Date Old Mtime\n\nContent.")
+    write_file(new_post, "---\ndate: 2025-04-01\n---\n# Older Date New Mtime\n\nContent.")
+
+    t1 = time.time() - 10000
+    t2 = time.time()
+    os.utime(old_post, (t1, t1))
+    os.utime(new_post, (t2, t2))
+
+    out_dir = tmp_path / "out"
+    run_hanma(str(tmp_path), "--output", str(out_dir))
+
+    posts_html = (out_dir / "posts" / "index.html").read_text(encoding="utf-8")
+    assert posts_html.index("Newer Date Old Mtime") < posts_html.index("Older Date New Mtime")
+    assert "5/1/2025" in posts_html
+    assert "4/1/2025" in posts_html
+    assert "5/1/2025 @" not in posts_html
+
+  def test_fallback_to_mtime_when_date_missing(self, tmp_path):
+    dated_post = tmp_path / "posts" / "dated.md"
+    undated_post = tmp_path / "posts" / "undated.md"
+
+    write_file(dated_post, "---\ndate: 2025-01-01\n---\n# Dated\n\nContent.")
+    write_file(undated_post, "# Undated\n\nContent.")
+
+    t_new = time.mktime(time.strptime("2025-02-01", "%Y-%m-%d"))
+    os.utime(undated_post, (t_new, t_new))
+
+    out_dir = tmp_path / "out"
+    run_hanma(str(tmp_path), "--output", str(out_dir))
+
+    posts_html = (out_dir / "posts" / "index.html").read_text(encoding="utf-8")
+    assert posts_html.index("Undated") < posts_html.index("Dated")
+
+  def test_front_matter_date_with_time_preserves_time_and_sorts_same_day_posts(self, tmp_path):
+    first_post = tmp_path / "posts" / "hello-world.md"
+    second_post = tmp_path / "posts" / "second-post.md"
+
+    write_file(first_post, "---\ntitle: Hello, World\ndate: 2026-04-23 09:15:00\n---\n# Hello, World\n\nFirst.")
+    write_file(second_post, "---\ntitle: Another Post\ndate: 2026-04-23 14:30\n---\n# Another Post\n\nSecond.")
+
+    out_dir = tmp_path / "out"
+    run_hanma(str(tmp_path), "--output", str(out_dir))
+
+    posts_html = (out_dir / "posts" / "index.html").read_text(encoding="utf-8")
+    assert posts_html.index("Another Post") < posts_html.index("Hello, World")
+    assert "4/23/2026 @ 02:30 PM" in posts_html
+    assert "4/23/2026 @ 09:15 AM" in posts_html
+
+
+class TestTimezoneLocalization:
+  def test_extract_date_dt_localized(self):
+    from zoneinfo import ZoneInfo
+    from app.parsing import extract_date_dt
+
+    dt = extract_date_dt("2026-04-07", tz_name="America/New_York")
+    assert dt is not None
+    assert dt.tzinfo == ZoneInfo("America/New_York")
+    assert dt.hour == 0
+    assert dt.minute == 0
+
+  def test_parse_date_field_localized(self):
+    from app.parsing import parse_date_field
+
+    fmt = parse_date_field("2026-04-07", tz_name="America/New_York")
+    assert fmt == "April 07, 2026"
+
+  def test_localize_datetime_naive(self):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.parsing import localize_datetime
+
+    naive = datetime(2026, 4, 7, 12, 0, 0)
+    localized = localize_datetime(naive, tz_name="America/New_York")
+    assert localized == naive.astimezone(ZoneInfo("America/New_York"))
+    assert localized.tzinfo == ZoneInfo("America/New_York")
+
+  def test_get_localized_now(self):
+    from zoneinfo import ZoneInfo
+    from app.parsing import get_localized_now
+
+    now_ny = get_localized_now("America/New_York")
+    assert now_ny.tzinfo == ZoneInfo("America/New_York")
+
+    now_utc = get_localized_now("UTC")
+    assert now_utc.tzinfo == ZoneInfo("UTC")
+
+  def test_invalid_timezone_fallback_to_utc(self):
+    from datetime import timezone
+    from app.parsing import extract_date_dt
+
+    dt = extract_date_dt("2026-04-07", tz_name="Invalid/City")
+    assert dt is not None
+    assert dt.tzinfo == timezone.utc
+
 

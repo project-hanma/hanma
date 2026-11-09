@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 """Site building and orchestration logic for Hanma."""
 import sys
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone as dt_timezone
 from pathlib import Path
 from typing import Optional
 
@@ -34,7 +34,7 @@ from app.parsing import (
   localize_datetime, _resolve_tz
 )
 from app.sidecar import build_sitemap_xml, build_search_json, build_rss_xml
-from app.highlight import HIGHLIGHT_CSS
+from app.highlight import _build_highlight_css
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
 from app.utils import atomic_write_text
 
@@ -46,10 +46,11 @@ def _process_page_worker(md_path: Path, out_html: Path, site_name: str,
              sanitize: bool, timezone: Optional[str],
              recent_posts: list, front: dict, body: str,
              search_enabled: bool = True,
-             sidebar_side: str = "right") -> Path:
-  """Worker function for ProcessPoolExecutor to convert one page."""
-  # We must reload the template in the worker because Jinja2 Templates are not picklable
-  template, _ = _load_theme_impl(theme_name, themes_dir)
+             sidebar_side: str = "right",
+             template=None) -> Path:
+  """Worker function to convert one page (supports pre-loaded template or reloading in subprocesses)."""
+  if template is None:
+    template, _ = _load_theme_impl(theme_name, themes_dir)
   return convert_md_to_html(
     md_path, out_html, site_name,
     nav_pages=nav_pages, template=template,
@@ -88,6 +89,7 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
   all_files = []
   drafts = 0
   tags_map: dict[str, list[tuple[Path, str, datetime]]] = {}
+  slug_to_tag: dict[str, str] = {}
   dated_pages = []
   search_entries = []
 
@@ -115,7 +117,11 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
     default_layout = "post" if in_posts_dir else "page"
     layout = str(front.get("layout", default_layout)).strip().lower()
     raw_si = front.get("sort_index")
-    sort_index = int(raw_si) if raw_si is not None else None
+    try:
+      sort_index = int(raw_si) if raw_si is not None else None
+    except (ValueError, TypeError):
+      print(f"Warning: invalid sort_index '{raw_si}' in {md_path} — ignoring.", file=sys.stderr)
+      sort_index = None
 
     all_files.append((md_path, out_html, title, layout, sort_index, front, body, md_hash))
 
@@ -133,9 +139,15 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
 
     fm_tags = front.get("tags", [])
     if isinstance(fm_tags, list):
+      seen_slugs: set[str] = set()
       for tag in fm_tags:
         tag_str = str(tag)
-        tags_map.setdefault(tag_str, []).append((out_html, title, date_dt))
+        slug = _normalize_tag(tag_str)
+        if not slug or slug in seen_slugs:
+          continue
+        seen_slugs.add(slug)
+        canonical_tag = slug_to_tag.setdefault(slug, tag_str)
+        tags_map.setdefault(canonical_tag, []).append((out_html, title, date_dt))
 
     if layout == "post":
       dated_pages.append((out_html, title, date_dt, description))
@@ -166,9 +178,9 @@ def _generate_sidecar_files(all_files: list, output_dir: Path,
   if base_url:
     # ── Generate sitemap.xml ──────────────────────────────────────────────
     sitemap_pages = []
-    for _, out_html, *_ in all_files:
+    for md_path, out_html, *_ in all_files:
       try:
-        mtime = out_html.stat().st_mtime
+        mtime = md_path.stat().st_mtime if md_path.exists() else out_html.stat().st_mtime
         lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
       except OSError:
         lastmod = datetime.now().strftime("%Y-%m-%d")
@@ -202,18 +214,18 @@ def _tag_sort_key(entry: tuple, tz_name: Optional[str] = None) -> tuple[int, dat
 
   if isinstance(date_val, datetime):
     if date_val.tzinfo is not None:
-      dt = date_val.astimezone(timezone.utc)
+      dt = date_val.astimezone(dt_timezone.utc)
     else:
-      dt = date_val.replace(tzinfo=tz).astimezone(timezone.utc)
+      dt = date_val.replace(tzinfo=tz).astimezone(dt_timezone.utc)
   elif isinstance(date_val, date):
     d = datetime(date_val.year, date_val.month, date_val.day, tzinfo=tz)
-    dt = d.astimezone(timezone.utc)
+    dt = d.astimezone(dt_timezone.utc)
   elif isinstance(date_val, str) and date_val.strip():
     raw = date_val.strip()
     for fmt in ("%B %d, %Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
       try:
         parsed = datetime.strptime(raw, fmt)
-        dt = parsed.replace(tzinfo=tz).astimezone(timezone.utc)
+        dt = parsed.replace(tzinfo=tz).astimezone(dt_timezone.utc)
         break
       except ValueError:
         pass
@@ -221,15 +233,15 @@ def _tag_sort_key(entry: tuple, tz_name: Optional[str] = None) -> tuple[int, dat
       try:
         parsed = datetime.fromisoformat(raw)
         if parsed.tzinfo is not None:
-          dt = parsed.astimezone(timezone.utc)
+          dt = parsed.astimezone(dt_timezone.utc)
         else:
-          dt = parsed.replace(tzinfo=tz).astimezone(timezone.utc)
+          dt = parsed.replace(tzinfo=tz).astimezone(dt_timezone.utc)
       except (ValueError, TypeError):
         print(f"Warning: malformed internal date '{date_val}' in tag sort", file=sys.stderr)
 
   if dt is not None:
     return (1, dt)
-  return (0, datetime.min.replace(tzinfo=timezone.utc))
+  return (0, datetime.min.replace(tzinfo=dt_timezone.utc))
 
 
 def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
@@ -249,7 +261,7 @@ def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
               base_url=base_url, output_root=output_dir,
               posts_out=nav_posts_out, posts_label=posts_label,
               recent_posts=recent_posts, search_enabled=search_enabled,
-              sidebar_side=sidebar_side)
+              sidebar_side=sidebar_side, timezone=timezone)
       print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
@@ -257,13 +269,20 @@ def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
   return errors
 
 
-def _prepare_output(output_dir: Path, theme_dir: Path, root: Path, expected_html: set[Path]) -> None:
+def _prepare_output(output_dir: Path, theme_dir: Path, root: Path, expected_html: set[Path]) -> list[Path]:
   """Prepare output directory: create, copy assets, and clean stale files."""
   output_dir.mkdir(parents=True, exist_ok=True)
   copy_theme_assets(theme_dir, output_dir)
   pygments_path = output_dir / _CSS_SUBDIR / "pygments.css"
-  atomic_write_text(pygments_path, HIGHLIGHT_CSS, encoding="utf-8")
+  highlight_css = _build_highlight_css()
+  try:
+    needs_pygments = not pygments_path.is_file() or pygments_path.read_text(encoding="utf-8") != highlight_css
+  except OSError:
+    needs_pygments = True
+  if needs_pygments:
+    atomic_write_text(pygments_path, highlight_css, encoding="utf-8")
   copy_static_assets(root, output_dir)
+  stale: list[Path] = []
   if output_dir.is_dir():
     stale = clean_stale_html(output_dir, expected_html)
     for path in stale:
@@ -272,6 +291,7 @@ def _prepare_output(output_dir: Path, theme_dir: Path, root: Path, expected_html
       except ValueError:
         rel = path
       print(f"  [clean] removed stale {rel}")
+  return stale
 
 
 def _print_dry_run_auxiliary(tags_map: dict, tag_out_paths: dict, has_posts_listing: bool, posts_out_path: Path) -> None:
@@ -315,7 +335,7 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
                   base_url=base_url, output_root=output_dir,
                   posts_label=posts_label, posts_out=nav_posts_out,
                   recent_posts=recent_posts, search_enabled=search_enabled,
-                  sidebar_side=sidebar_side)
+                  sidebar_side=sidebar_side, timezone=timezone)
       print(f"  [posts] posts/index.html  ({len(dated_pages)} post(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [posts] ERROR generating posts/index.html: {exc}")
@@ -334,7 +354,8 @@ def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir,
           nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
           search_enabled, incremental, manifest, manifest_path, 
           template_mtime, config_mtime, nav_sig, dry_run, base_url,
-          sidebar_side: str = "right") -> tuple:
+          sidebar_side: str = "right",
+          template=None) -> tuple:
   """Determine which pages need rebuilding and plan worker tasks."""
   tasks, ok, skipped = [], 0, 0
   theme_name = theme_dir.name
@@ -374,7 +395,7 @@ def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir,
         md_path, out_html, site_name, nav_pages, theme_name, themes_dir,
         tags_out_dir, base_url, output_dir, layout, nav_posts_out, posts_label,
         sanitize, timezone, recent_posts, front, body, search_enabled,
-        sidebar_side
+        sidebar_side, template
       ),
       rel, md_hash, md_path
     ))
@@ -455,8 +476,9 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 
   nav_posts_out = posts_out_path if has_posts_listing else None
 
+  stale_removed: list[Path] = []
   if not dry_run:
-    _prepare_output(output_dir, theme_dir, root, expected_html)
+    stale_removed = _prepare_output(output_dir, theme_dir, root, expected_html)
 
   errors = 0
   recent_posts = [
@@ -470,32 +492,40 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     all_files, root, output_dir, site_name, nav_pages, theme_dir, 
     nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
     search_enabled, incremental, manifest, manifest_path, template_mtime, 
-    config_mtime, nav_sig, dry_run, base_url, sidebar_side=sidebar_side
+    config_mtime, nav_sig, dry_run, base_url, sidebar_side=sidebar_side,
+    template=template
   )
 
   if tasks:
     for fn, args, rel, md_hash, md_path in tasks:
-        try:
-          out = fn(*args)
-          print(f"  ✓  {rel}  →  {out}")
-          ok += 1
-          if incremental and manifest_path is not None:
-            manifest[str(md_path)] = md_hash
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-          print(f"  ✗  {rel}  →  ERROR: {exc}")
-          errors += 1
+      try:
+        out = fn(*args)
+        print(f"  ✓  {rel}  →  {out}")
+        ok += 1
+        if incremental and manifest_path is not None:
+          manifest[str(md_path)] = md_hash
+      except Exception as exc:  # pylint: disable=broad-exception-caught
+        print(f"  ✗  {rel}  →  ERROR: {exc}")
+        errors += 1
 
   if dry_run:
     _print_dry_run_auxiliary(tags_map, tag_out_paths, has_posts_listing, posts_out_path)
     return ok, errors, skipped
 
   # ── Generate tag indices, posts listing, and sidecar files ─────────────
-  errors += _generate_auxiliary_pages(
-    tags_map, tag_out_paths, site_name, nav_pages, template, base_url, 
-    output_dir, nav_posts_out, posts_label, recent_posts, search_enabled,
-    has_posts_listing, posts_out_path, dated_pages, posts_collision, all_files, 
-    search_entries, sidebar_side=sidebar_side, timezone=timezone
+  aux_up_to_date = (
+    incremental
+    and not tasks
+    and not stale_removed
+    and all(p.exists() for p in expected_html)
   )
+  if not aux_up_to_date:
+    errors += _generate_auxiliary_pages(
+      tags_map, tag_out_paths, site_name, nav_pages, template, base_url, 
+      output_dir, nav_posts_out, posts_label, recent_posts, search_enabled,
+      has_posts_listing, posts_out_path, dated_pages, posts_collision, all_files, 
+      search_entries, sidebar_side=sidebar_side, timezone=timezone
+    )
 
   if incremental and manifest_path is not None:
     manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime

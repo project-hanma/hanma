@@ -632,6 +632,10 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--muted);
 }
 
+.prose .footnote hr {
+  display: none;
+}
+
 .prose dl dt {
   font-weight: bold;
   margin-top: 1rem;
