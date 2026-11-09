@@ -9,10 +9,10 @@ Use this skill when modifying the core Python code of the Hanma SSG (located in 
 
 ## Core Architecture
 - **Two-Pass Build System**:
-  1. **Discovery / Metadata (`collect_page_info`)**: Scan the site directory, parse front matter, and build the navigation tree.
-  2. **Conversion / Templating (`convert_md_to_html`)**: Convert Markdown to HTML and inject variables into the theme templates.
-- **Incrementality**: Incremental builds track file modification times, theme/config changes, and navigation signature changes via `.hanma_manifest.json`.
-- **Theme System**: Merges theme assets into `output/assets/` and auto-generates `pygments.css`.
+  1. **Discovery / Metadata (`_collect_all_pages`)**: Scan the site directory, parse front matter, and build the navigation tree.
+  2. **Conversion / Templating (`convert_md_to_html`)**: Convert Markdown to HTML and render variables into the active theme's Jinja2 `template.html`.
+- **Incrementality**: Incremental builds track content hashes, file modification times, theme/config changes, and navigation signature changes via `.hanma_manifest.json`.
+- **Theme & Static Assets**: Differentially syncs (`sync_file_if_changed`) theme assets into `output/assets/` and static files into `output/static/`, and auto-generates `pygments.css`.
 
 ## Development Workflow
 1. **Branching**:

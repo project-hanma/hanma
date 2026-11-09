@@ -426,6 +426,10 @@ body {
   color: var(--muted);
 }
 
+.prose .footnote hr {
+  display: none;
+}
+
 .prose dl dt { font-weight: bold; margin-top: 0.8em; }
 .prose dl dd { margin-left: 1.5em; color: var(--muted); }
 

@@ -15,7 +15,6 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Theme loading and asset management for Hanma."""
-import shutil
 try:
   import jinja2
 except ImportError as exc:
@@ -24,6 +23,8 @@ except ImportError as exc:
     "Install it with:  pip install Jinja2"
   ) from exc
 from pathlib import Path
+
+from app.utils import sync_file_if_changed
 
 
 class ThemeError(ValueError):
@@ -58,14 +59,18 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
 _CSS_SUBDIR = Path("assets") / "css"
 
 
-def _copy_assets_dir(src_assets_dir: Path, output_root: Path) -> None:
+def _copy_assets_dir(src_assets_dir: Path, output_root: Path, resolved_theme_dir: Path) -> None:
   for child in src_assets_dir.rglob("*"):
+    try:
+      if not child.resolve().is_relative_to(resolved_theme_dir):
+        continue
+    except OSError:
+      continue
     if not child.is_file():
       continue
     rel = child.relative_to(src_assets_dir)
     dest = output_root / "assets" / rel
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(child, dest)
+    sync_file_if_changed(child, dest)
 
 def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
   """Copy all non-template files from theme_dir into output_root/assets/.
@@ -76,18 +81,28 @@ def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
   Loose files (not inside assets/) fall back to output_root/assets/css/.
   template.html is always skipped.
   """
+  resolved_theme_dir = theme_dir.resolve()
   css_dir = output_root / _CSS_SUBDIR
   for src in theme_dir.iterdir():
     if src.name == "template.html":
       continue
+    try:
+      if not src.resolve().is_relative_to(resolved_theme_dir):
+        continue
+    except OSError:
+      continue
     if src.is_dir() and src.name == "assets":
-      _copy_assets_dir(src, output_root)
+      _copy_assets_dir(src, output_root, resolved_theme_dir)
       continue
     dest = css_dir / src.name
     if src.is_file():
-      dest.parent.mkdir(parents=True, exist_ok=True)
-      shutil.copy2(src, dest)
+      sync_file_if_changed(src, dest)
     elif src.is_dir():
-      if dest.exists():
-        shutil.rmtree(dest)
-      shutil.copytree(src, dest)
+      for child in src.rglob("*"):
+        try:
+          if not child.resolve().is_relative_to(resolved_theme_dir):
+            continue
+        except OSError:
+          continue
+        if child.is_file():
+          sync_file_if_changed(child, dest / child.relative_to(src))

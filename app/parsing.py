@@ -87,9 +87,12 @@ def extract_description(md_text: str, max_chars: int = 160) -> str:
   for line in md_text.splitlines():
     stripped = line.strip()
     if stripped and not stripped.startswith("#") and not stripped.startswith("```"):
-      # Strip inline markdown
-      plain = re.sub(r"[*_`\[\]()!]", "", stripped)
-      return plain[:max_chars]
+      # Strip inline script/style blocks, HTML tags, and inline markdown
+      no_scripts = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", "", stripped, flags=re.IGNORECASE)
+      no_tags = re.sub(r"<[^>]+>", "", no_scripts)
+      plain = re.sub(r"[*_`\[\]()!]", "", no_tags).strip()
+      if plain:
+        return plain[:max_chars]
   return ""
 
 
@@ -115,7 +118,7 @@ def localize_datetime(dt: datetime, tz_name: Optional[str] = None) -> datetime:
 
 def _resolve_tz(tz_name: Optional[str]) -> timezone | ZoneInfo:
   """Resolve a timezone name string to a ZoneInfo or UTC fallback."""
-  if not tz_name or not ZoneInfo:
+  if not tz_name or ZoneInfo is None:
     return timezone.utc
   try:
     return ZoneInfo(tz_name)
@@ -139,9 +142,10 @@ def parse_date_field(fm_date_raw, tz_name: Optional[str] = None, source_path: Op
 def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None, source_path: Optional[Path] = None) -> datetime | None:
   """Extract a datetime object from a front matter date field.
 
-  Accepts either a YYYY-MM-DD string or a datetime.date object (as parsed by
-  PyYAML). Returns a datetime object localized to tz_name, or None if the value
-  is absent or malformed.
+  Accepts a YYYY-MM-DD (optionally with HH:MM or HH:MM:SS) string, a
+  datetime.datetime object, or a datetime.date object (as parsed by PyYAML).
+  Returns a datetime object localized to tz_name, or None if the value is
+  absent or malformed.
   """
   if fm_date_raw is None:
     return None
@@ -149,8 +153,18 @@ def extract_date_dt(fm_date_raw, tz_name: Optional[str] = None, source_path: Opt
   tz = _resolve_tz(tz_name)
   try:
     if isinstance(fm_date_raw, str):
-      dt = datetime.strptime(fm_date_raw, "%Y-%m-%d")
-      return dt.replace(tzinfo=tz)
+      raw_str = fm_date_raw.strip()
+      for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+          dt = datetime.strptime(raw_str, fmt)
+          return dt.replace(tzinfo=tz)
+        except ValueError:
+          continue
+      raise ValueError(f"Unsupported date format: {fm_date_raw}")
+    if isinstance(fm_date_raw, datetime):
+      if fm_date_raw.tzinfo is not None:
+        return fm_date_raw.astimezone(tz)
+      return fm_date_raw.replace(tzinfo=tz)
     # PyYAML parses YYYY-MM-DD as datetime.date
     return datetime(fm_date_raw.year, fm_date_raw.month, fm_date_raw.day, tzinfo=tz)
   except (ValueError, AttributeError, TypeError):

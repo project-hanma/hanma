@@ -13,8 +13,12 @@ jobs:
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Clone repository
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Install dependencies
         run: |
@@ -22,7 +26,7 @@ jobs:
           python3 -m pip install -r requirements-dev.txt --break-system-packages
 
       - name: Check syntax (py_compile)
-        run: python3 -m py_compile hanma.py && echo "Syntax OK"
+        run: python3 -m py_compile hanma.py app/*.py && echo "Syntax OK"
 
       - name: Run tests
         run: python3 -m pytest tests/ -v --tb=short
@@ -47,11 +51,13 @@ jobs:
           env && echo
           docker info && echo
 
-      - name: Clone Repository
+      - name: Clone repository
         run: |
-          git clone ${{ github.server_url }}/${{ github.repository }}.git
-          cd hanma
-          git checkout ${{ github.head_ref || github.ref_name }}
+          mkdir -p hanma && cd hanma
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Extract App Version
         run: |
@@ -64,12 +70,8 @@ jobs:
           # Sanitize repository name
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-          # Use base_ref for PRs (target branch) or ref_name for pushes
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TAG_SAFE=$(echo "${{ github.base_ref }}" | tr '[:upper:]' '[:lower:]')
-          else
-            TAG_SAFE=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]' | sed 's/\//-/g')
-          fi
+          # Sanitize branch ref_name for image tag
+          TAG_SAFE=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]' | sed 's/\//-/g')
 
           # Map 'main' branch to 'latest' tag
           if [ "$TAG_SAFE" = "main" ]; then
@@ -84,7 +86,11 @@ jobs:
           fi
 
       - name: Docker Login
-        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login --username ${{ secrets.REGISTRY_USER }} --password-stdin ${{ vars.REGISTRY }}
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_HOST: ${{ vars.REGISTRY }}
+        run: printf '%s\n' "$REGISTRY_PASSWORD" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY_HOST"
 
       - name: Build Image
         run: |
@@ -113,4 +119,4 @@ jobs:
 
       - name: Cleanup Docker Login
         if: always()
-        run: rm -v /home/builds/.docker/config.json
+        run: rm -fv /home/builds/.docker/config.json

@@ -188,10 +188,10 @@ def _init_scaffold_cmd(force: bool) -> None:
 
 def _generate_default_config_cmd(target: str | bool) -> None:
   """Generate a default configuration file and exit."""
-  if target is True:
-    out_path = _CONF_DIR / "hanma-defaults.yml"
-  else:
+  if isinstance(target, str):
     out_path = Path(target).resolve()
+  else:
+    out_path = _CONF_DIR / "hanma-defaults.yml"
 
   from app.config import DEFAULT_CONFIG_CONTENT
   
@@ -295,7 +295,11 @@ def _get_effective_settings(args: argparse.Namespace, site_config: dict) -> dict
   settings["output_arg"]  = args.output   if args.output   is not None else site_config.get("output", None)
   settings["posts_label"] = str(site_config.get("posts_label", "Blog"))
   settings["effective_timezone"] = site_config.get("timezone",    None)
-  settings["sidebar_side"] = site_config.get("sidebar_side", "right")
+  raw_side = str(site_config.get("sidebar_side", "right")).strip().lower()
+  if raw_side not in {"left", "right"}:
+    print(f"Warning: invalid sidebar_side '{raw_side}' in config — defaulting to 'right'.", file=sys.stderr)
+    raw_side = "right"
+  settings["sidebar_side"] = raw_side
 
   _apply_runtime_settings(settings, args, site_config)
 
@@ -326,6 +330,15 @@ def _apply_runtime_settings(settings: dict, args: argparse.Namespace, site_confi
   else:
     settings["effective_serve"] = False
     settings["effective_port"]  = args.port if args.port != 8000 else cfg_port
+
+  try:
+    port_val = int(settings["effective_port"])
+  except (TypeError, ValueError):
+    port_val = -1
+  if not 1 <= port_val <= 65535:
+    print(f"Error: invalid port '{settings['effective_port']}'. Port must be between 1 and 65535.", file=sys.stderr)
+    sys.exit(1)
+  settings["effective_port"] = port_val
 
   settings["effective_host"] = args.host if args.host is not None else cfg_host
   settings["effective_watch"]       = args.watch       or cfg_watch
@@ -400,6 +413,7 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
       "sanitize": settings["effective_sanitize"],
       "timezone": settings["effective_timezone"],
       "search_enabled": settings["effective_search"],
+      "sidebar_side": settings["sidebar_side"],
     }
     if settings["effective_serve"]:
       watch_thread = threading.Thread(
@@ -465,10 +479,18 @@ class QuietHandler(SimpleHTTPRequestHandler):
         pass
 
 
+class _HanmaHTTPServer(HTTPServer):
+  """HTTPServer subclass with typed directory attribute for QuietHandler."""
+  directory: str = ""
+
+
 def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
   """Start a local HTTP server serving serve_dir."""
+  if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+    print(f"Error: invalid port '{port}'. Port must be between 1 and 65535.", file=sys.stderr)
+    sys.exit(1)
   try:
-    server = HTTPServer((host, port), QuietHandler)
+    server = _HanmaHTTPServer((host, port), QuietHandler)
     server.directory = str(serve_dir) # SimpleHTTPRequestHandler uses this
   except OSError as exc:
     if exc.errno == 98 or "already in use" in str(exc).lower():

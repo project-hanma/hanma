@@ -16,6 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 """Common utilities and constants for Hanma."""
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,21 @@ from typing import Optional
 # ── Constants ─────────────────────────────────────────────────────────────────
 # Anchor for themes/ — same directory as hanma.py since all files are siblings
 _THEMES_DIR = Path(__file__).parent.parent / "themes"
+
+
+def sync_file_if_changed(src: Path, dest: Path) -> bool:
+  """Copy src to dest only if dest is missing or its size/mtime_ns differs."""
+  try:
+    src_stat = src.stat()
+    if dest.is_file():
+      dest_stat = dest.stat()
+      if src_stat.st_size == dest_stat.st_size and src_stat.st_mtime_ns == dest_stat.st_mtime_ns:
+        return False
+  except OSError:
+    pass
+  dest.parent.mkdir(parents=True, exist_ok=True)
+  shutil.copy2(src, dest)
+  return True
 
 
 def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:

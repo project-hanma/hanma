@@ -22,6 +22,7 @@ from typing import Optional
 
 from app.build import _run_build
 from app.files import find_markdown_files
+from app.theme import _load_theme_impl
 
 try:
   from watchdog.observers import Observer
@@ -67,6 +68,8 @@ class _HanmaEventHandler(_WatchdogHandler):
       return False
     if self._is_hidden(p):
       return False
+    if p.name == "template.html" and p.resolve().is_relative_to(self._theme_dir):
+      return True
     return p.suffix.lower() in self._RELEVANT_SUFFIXES
 
   def _schedule_rebuild(self) -> None:
@@ -123,7 +126,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
          manifest_path: Optional[Path] = None,
          sanitize: bool = False,
          timezone: Optional[str] = None,
-         search_enabled: bool = True) -> None:
+         search_enabled: bool = True,
+         sidebar_side: str = "right") -> None:
   """Fallback polling-based watch (used when watchdog is not available)."""
   print(f"Watching {root} for changes (polling, Ctrl+C to stop)...\n")
 
@@ -156,7 +160,8 @@ def _watch_polling(root: Path, output_dir: Path, site_name: str,
              manifest_path=manifest_path,
              sanitize=sanitize,
              timezone=timezone,
-             search_enabled=search_enabled)
+             search_enabled=search_enabled,
+             sidebar_side=sidebar_side)
       last_mtimes = current_mtimes
       files = current_files
   except KeyboardInterrupt:
@@ -173,7 +178,8 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            manifest_path: Optional[Path] = None,
            sanitize: bool = False,
            timezone: Optional[str] = None,
-           search_enabled: bool = True) -> None:
+           search_enabled: bool = True,
+           sidebar_side: str = "right") -> None:
   """Watch source files and regenerate on changes.
 
   Uses watchdog (inotify/FSEvents/kqueue) when available; falls back to
@@ -185,22 +191,33 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
            posts_label=posts_label, config_path=config_path,
            incremental=incremental, manifest_path=manifest_path,
            sanitize=sanitize, timezone=timezone,
-           search_enabled=search_enabled)
+           search_enabled=search_enabled,
+           sidebar_side=sidebar_side)
     return
 
+  build_lock = threading.Lock()
+
   def rebuild():
-    print("\n  [watch] change detected, rebuilding...")
-    try:
-      _run_build(root, output_dir, site_name, template, theme_dir,
-           base_url=base_url, posts_label=posts_label,
-           config_path=config_path,
-           incremental=incremental,
-           manifest_path=manifest_path,
-           sanitize=sanitize,
-           timezone=timezone,
-           search_enabled=search_enabled)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-      print(f"  [watch] build error: {exc}")
+    with build_lock:
+      print("\n  [watch] change detected, rebuilding...")
+      try:
+        active_template = template
+        if (theme_dir / "template.html").is_file():
+          try:
+            active_template, _ = _load_theme_impl(theme_dir.name, theme_dir.parent)
+          except Exception:  # pylint: disable=broad-exception-caught
+            pass
+        _run_build(root, output_dir, site_name, active_template, theme_dir,
+             base_url=base_url, posts_label=posts_label,
+             config_path=config_path,
+             incremental=incremental,
+             manifest_path=manifest_path,
+             sanitize=sanitize,
+             timezone=timezone,
+             search_enabled=search_enabled,
+             sidebar_side=sidebar_side)
+      except Exception as exc:  # pylint: disable=broad-exception-caught
+        print(f"  [watch] build error: {exc}")
 
   handler = _HanmaEventHandler(rebuild, root, theme_dir, output_dir=output_dir)
   observer = Observer()

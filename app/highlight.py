@@ -15,13 +15,15 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Syntax highlighting helpers using Pygments."""
+import functools
 import re
 
 
+@functools.lru_cache(maxsize=1)
 def _build_highlight_css() -> str:
   """Return scoped Pygments CSS for light and dark themes."""
   try:
-    from pygments.formatters import HtmlFormatter
+    from pygments.formatters import HtmlFormatter  # type: ignore[import-untyped]
   except ImportError:
     return ""  # Pygments not installed — highlighting still works, just unstyled
 
@@ -57,4 +59,7 @@ def _build_highlight_css() -> str:
   }}"""
 
 
-HIGHLIGHT_CSS = _build_highlight_css()
+def __getattr__(name: str):
+  if name == "HIGHLIGHT_CSS":
+    return _build_highlight_css()
+  raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

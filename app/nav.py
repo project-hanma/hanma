@@ -55,8 +55,21 @@ def get_nav_data(current_out_html: Path,
   return [home_item] + final_nav if home_item else final_nav
 
 
+_GROUP_CACHE: dict[tuple, dict] = {}
+
+
+def _si_sort_key(entry: tuple) -> tuple:
+  si = entry[4]
+  return (1 if si is None else 0, si if si is not None else 0)
+
+
 def _group_nav_pages(nav_pages: list[tuple], output_root: Optional[Path]) -> dict:
-  """Group pages by their top-level directory."""
+  """Group pages by their top-level directory and pre-sort children."""
+  cache_key = (id(nav_pages), len(nav_pages), output_root)
+  cached = _GROUP_CACHE.get(cache_key)
+  if cached is not None and cached.get("_ref") is nav_pages:
+    return cached["groups"]
+
   groups: dict = OrderedDict()
   for entry in nav_pages:
     page_html = entry[0]
@@ -66,11 +79,22 @@ def _group_nav_pages(nav_pages: list[tuple], output_root: Optional[Path]) -> dic
     if dir_key == POSTS_DIR_NAME:
       continue
     if dir_key not in groups:
-      groups[dir_key] = {"index": None, "children": []}
+      groups[dir_key] = {"index": None, "children": [], "sort_index": None}
     if depth > 0 and page_html.stem.lower() == "index":
       groups[dir_key]["index"] = entry
     else:
       groups[dir_key]["children"].append(entry)
+
+  for dir_key, grp in groups.items():
+    if dir_key != "":
+      grp["children"].sort(key=_si_sort_key)
+      if grp["index"] is not None:
+        grp["sort_index"] = grp["index"][4]
+      else:
+        grp["sort_index"] = next((e[4] for e in grp["children"] if e[4] is not None), None)
+
+  _GROUP_CACHE.clear()
+  _GROUP_CACHE[cache_key] = {"_ref": nav_pages, "groups": groups}
   return groups
 
 
@@ -90,7 +114,7 @@ def _process_groups(groups: dict, current_out_html: Path, output_root: Optional[
     else:
       folder_item = _create_folder_item(dir_key, group, current_out_html, rel_url_fn)
       if folder_item:
-        pending.append((group["index"][4] if group["index"] else None, folder_item))
+        pending.append((group.get("sort_index"), folder_item))
   return home_item, pending
 
 
@@ -106,42 +130,36 @@ def _create_item(entry: tuple, current_out_html: Path, rel_url_fn) -> dict:
 def _create_folder_item(dir_key: str, group: dict, current_out_html: Path, rel_url_fn) -> Optional[dict]:
   """Create a folder (dropdown) navigation item."""
   idx = group["index"]
+  children: list[dict] = []
   if idx is None:
     # Handle folder without index.md (header-only)
     if not group["children"]:
       return None
     folder_title = dir_key.replace("-", " ").replace("_", " ").title()
-    item = {"title": folder_title, "url": None, "is_current": False, "is_folder": True, "children": []}
-    group_si = next((e[4] for e in group["children"] if e[4] is not None), None)
-    # We'll use the first child's sort index as a proxy
-    for child_entry in sorted(group["children"], key=lambda e: (1 if e[4] is None else 0, e[4] if e[4] is not None else 0)):
-      item["children"].append(_create_item(child_entry, current_out_html, rel_url_fn))
+    is_current = False
+    for child_entry in group["children"]:
+      children.append(_create_item(child_entry, current_out_html, rel_url_fn))
       if child_entry[0] == current_out_html:
-        item["is_current"] = True
-    # Attach a mock sort_index for the group
-    group["index"] = (None, None, None, None, group_si)
-    return item
+        is_current = True
+    return {"title": folder_title, "url": None, "is_current": is_current, "is_folder": True, "children": children}
 
   folder_title = dir_key.replace("-", " ").replace("_", " ").title()
-  item = {"title": folder_title, "is_current": idx[0] == current_out_html, "is_folder": True, "children": []}
+  for child_entry in group["children"]:
+    children.append(_create_item(child_entry, current_out_html, rel_url_fn))
+  item: dict = {"title": folder_title, "is_current": idx[0] == current_out_html, "is_folder": True, "children": children}
   _apply_link_logic(item, idx[5] if len(idx) > 5 else None, rel_url_fn(idx[0]))
-  
-  def _si_key(e):
-    return (1 if e[4] is None else 0, e[4] if e[4] is not None else 0)
-
-  for child_entry in sorted(group["children"], key=_si_key):
-    item["children"].append(_create_item(child_entry, current_out_html, rel_url_fn))
   return item
 
 
 def _create_posts_nav(posts_out: Path, posts_label: str, current_out_html: Path, recent_posts: Optional[list], rel_url_fn) -> dict:
   """Create the 'Blog' (posts) navigation item with recent posts as children."""
-  item = {"title": posts_label, "is_current": posts_out == current_out_html, "is_folder": bool(recent_posts), "children": []}
+  children: list[dict] = []
+  item: dict = {"title": posts_label, "is_current": posts_out == current_out_html, "is_folder": bool(recent_posts), "children": children}
   item["url"] = rel_url_fn(posts_out)
   if recent_posts:
     for out_path, title in recent_posts:
-      item["children"].append({"title": title, "url": rel_url_fn(out_path), "is_current": out_path == current_out_html, "is_folder": False})
-    item["children"].append({
+      children.append({"title": title, "url": rel_url_fn(out_path), "is_current": out_path == current_out_html, "is_folder": False})
+    children.append({
       "title": "More posts...",
       "url": rel_url_fn(posts_out),
       "is_current": False,
@@ -169,6 +187,19 @@ def _get_rel_parts(page_html: Path, output_root: Optional[Path]) -> tuple:
   return (page_html.name,)
 
 
+def _is_safe_url(url: str) -> bool:
+  """Return True if url uses a safe scheme (http, https, mailto) or is a relative path."""
+  cleaned = url.strip()
+  if not cleaned:
+    return False
+  lower = cleaned.lower()
+  if lower.startswith(("javascript:", "data:", "vbscript:")):
+    return False
+  if ":" in lower.split("/", 1)[0]:
+    return lower.startswith(("http://", "https://", "mailto:"))
+  return True
+
+
 def _apply_link_logic(item: dict, link_data, default_url: str):
   """Apply external link overrides to a nav item."""
   item["url"] = default_url
@@ -176,10 +207,10 @@ def _apply_link_logic(item: dict, link_data, default_url: str):
     return
 
   override_url = link_data.get("url")
-  if not override_url:
+  if not override_url or not _is_safe_url(str(override_url)):
     return
 
-  item["url"] = override_url
+  item["url"] = str(override_url).strip()
   target = str(link_data.get("target", "")).lower().strip()
 
   target_map = {
