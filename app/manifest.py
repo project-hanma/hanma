@@ -27,6 +27,34 @@ from app.utils import atomic_write_text
 _MANIFEST_TEMPLATE_KEY = "_template_mtime"
 _MANIFEST_CONFIG_KEY   = "_config_mtime"
 _MANIFEST_NAV_KEY      = "_nav_signature"
+_MANIFEST_AUX_KEY      = "_aux_signature"
+_MANIFEST_META_KEY     = "_page_meta"
+
+
+def compute_aux_signature(tags_map: dict, dated_pages: list, search_entries: list,
+                          base_url: str, posts_label: str, search_enabled: bool,
+                          site_name: str, sidebar_side: str) -> str:
+  """Return a stable hash of inputs that affect tag indices, posts listing, and sidecars."""
+  payload = {
+    "base_url": base_url,
+    "posts_label": posts_label,
+    "search_enabled": search_enabled,
+    "site_name": site_name,
+    "sidebar_side": sidebar_side,
+    "tags": {
+      tag: [
+        [str(p), title, dt.isoformat() if hasattr(dt, "isoformat") else str(dt)]
+        for p, title, dt in pages
+      ]
+      for tag, pages in sorted(tags_map.items())
+    },
+    "dated_pages": [
+      [str(p), title, dt.isoformat(), desc]
+      for p, title, dt, desc in dated_pages
+    ],
+    "search_entries": search_entries,
+  }
+  return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None,

@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Site building and orchestration logic for Hanma."""
+from concurrent.futures import ThreadPoolExecutor
 import sys
 from datetime import datetime, date, timezone as dt_timezone
 from pathlib import Path
@@ -24,8 +25,9 @@ from app.convert import convert_md_to_html
 from app.files import find_markdown_files, copy_static_assets, clean_stale_html, POSTS_DIR_NAME
 from app.manifest import (
   load_build_manifest, save_build_manifest, page_needs_rebuild,
-  compute_nav_signature, compute_text_hash,
+  compute_nav_signature, compute_text_hash, compute_aux_signature,
   _MANIFEST_TEMPLATE_KEY, _MANIFEST_CONFIG_KEY, _MANIFEST_NAV_KEY,
+  _MANIFEST_AUX_KEY, _MANIFEST_META_KEY,
 )
 from app.pages import _normalize_tag, build_tag_index_html, build_posts_listing_html
 from app.parsing import (
@@ -36,35 +38,35 @@ from app.parsing import (
 from app.sidecar import build_sitemap_xml, build_search_json, build_rss_xml
 from app.highlight import _build_highlight_css
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
-from app.utils import atomic_write_text
+from app.utils import BuildContext, write_text_if_changed
+
+_PARALLEL_THRESHOLD = 20
 
 
-def _process_page_worker(md_path: Path, out_html: Path, site_name: str,
-             nav_pages: list, theme_name: str, themes_dir: Path,
-             tags_out_dir: Path, base_url: str, output_root: Path,
-             layout: str, posts_out: Optional[Path], posts_label: str,
-             sanitize: bool, timezone: Optional[str],
-             recent_posts: list, front: dict, body: str,
-             search_enabled: bool = True,
-             sidebar_side: str = "right",
-             template=None) -> Path:
-  """Worker function to convert one page (supports pre-loaded template or reloading in subprocesses)."""
+def _process_page_worker(md_path: Path, out_html: Path, nav_pages: list,
+                         theme_name: str, themes_dir: Path, tags_out_dir: Path,
+                         layout: str, front: Optional[dict], body: Optional[str],
+                         ctx: BuildContext, source_mtime: Optional[float] = None) -> Path:
+  """Worker function to convert one page (supports pre-loaded template or reloading)."""
+  template = ctx.template
   if template is None:
     template, _ = _load_theme_impl(theme_name, themes_dir)
   return convert_md_to_html(
-    md_path, out_html, site_name,
+    md_path, out_html, ctx.site_name,
     nav_pages=nav_pages, template=template,
     tags_out_dir=tags_out_dir,
-    base_url=base_url, output_root=output_root,
+    base_url=ctx.base_url, output_root=ctx.output_dir,
     _layout=layout,
-    posts_out=posts_out, posts_label=posts_label,
-    sanitize=sanitize,
-    timezone=timezone,
-    recent_posts=recent_posts,
+    posts_out=ctx.posts_out, posts_label=ctx.posts_label,
+    sanitize=ctx.sanitize,
+    timezone=ctx.timezone,
+    recent_posts=ctx.recent_posts,
     front_matter=front,
     body=body,
-    search_enabled=search_enabled,
-    sidebar_side=sidebar_side
+    search_enabled=ctx.search_enabled,
+    sidebar_side=ctx.sidebar_side,
+    source_mtime=source_mtime,
+    resolved_root_index=ctx.resolved_root_index,
   )
 
 
@@ -84,7 +86,10 @@ def _load_mtimes(theme_dir: Path, config_path: Optional[Path]) -> tuple[float, f
   return template_mtime, config_mtime
 
 
-def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone: Optional[str]):
+def _collect_all_pages(files: list[Path], root: Path, output_dir: Path,
+                       timezone: Optional[str],
+                       manifest: Optional[dict] = None,
+                       incremental: bool = False):
   """Pass 1: Collect titles, output paths, and derived data for all markdown files."""
   all_files = []
   drafts = 0
@@ -92,56 +97,112 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
   slug_to_tag: dict[str, str] = {}
   dated_pages = []
   search_entries = []
+  meta_cache = manifest.get(_MANIFEST_META_KEY, {}) if (incremental and isinstance(manifest, dict)) else {}
+  new_meta_cache: dict[str, dict] = {}
+  tz_key = timezone or ""
 
   for md_path in files:
-    md_text = md_path.read_text(encoding="utf-8")
-    md_hash = compute_text_hash(md_text)
-    front, body = parse_front_matter(md_text, source_path=md_path)
-    
-    if front.get("draft") is True:
-      print(f"  [draft] skipping {md_path.name}")
-      drafts += 1
-      continue
-
-    fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
-    title = front.get("title") or extract_title(body, fallback)
-    description = front.get("description") or extract_description(body)
-    
-    rel = md_path.relative_to(root)
-    if md_path.stem.lower() == "index" and len(rel.parts) == 1:
-      title = "Home"
-    out_html = output_dir / rel.with_suffix(".html")
-
-    rel_parts = rel.parts
-    in_posts_dir = len(rel_parts) > 1 and rel_parts[0] == POSTS_DIR_NAME
-    default_layout = "post" if in_posts_dir else "page"
-    layout = str(front.get("layout", default_layout)).strip().lower()
-    raw_si = front.get("sort_index")
+    key = str(md_path)
     try:
-      sort_index = int(raw_si) if raw_si is not None else None
-    except (ValueError, TypeError):
-      print(f"Warning: invalid sort_index '{raw_si}' in {md_path} — ignoring.", file=sys.stderr)
-      sort_index = None
+      st = md_path.stat()
+      md_size, md_mtime_ns, md_mtime = st.st_size, st.st_mtime_ns, st.st_mtime
+    except OSError:
+      md_size, md_mtime_ns, md_mtime = -1, -1, 0.0
 
-    all_files.append((md_path, out_html, title, layout, sort_index, front, body, md_hash))
+    cached = meta_cache.get(key) if isinstance(meta_cache, dict) else None
+    cache_hit = (
+      isinstance(cached, dict)
+      and md_size >= 0
+      and cached.get("size") == md_size
+      and cached.get("mtime_ns") == md_mtime_ns
+      and cached.get("tz") == tz_key
+    )
 
-    # ── Date parsing for tags and post listing ──────────────────────────────
-    date_dt = extract_date_dt(front.get("date"), tz_name=timezone, source_path=md_path)
-    if date_dt is None:
+    if cache_hit and cached is not None:
+      new_meta_cache[key] = cached
+      if cached.get("draft") is True:
+        print(f"  [draft] skipping {md_path.name}")
+        drafts += 1
+        continue
+      out_html = Path(cached["out_html"])
+      title = cached["title"]
+      description = cached["description"]
+      layout = cached["layout"]
+      sort_index = cached["sort_index"]
+      front: Optional[dict] = {"link": cached["link"]} if cached.get("link") is not None else {}
+      body: Optional[str] = None
+      md_hash = cached["hash"]
+      fm_tags = cached.get("tags", [])
+      date_dt = datetime.fromisoformat(cached["date_iso"])
+    else:
+      md_text = md_path.read_text(encoding="utf-8")
+      md_hash = compute_text_hash(md_text)
+      front, body = parse_front_matter(md_text, source_path=md_path)
+
+      if front.get("draft") is True:
+        print(f"  [draft] skipping {md_path.name}")
+        drafts += 1
+        if md_size >= 0:
+          new_meta_cache[key] = {
+            "size": md_size, "mtime_ns": md_mtime_ns, "tz": tz_key, "draft": True,
+          }
+        continue
+
+      fallback = md_path.stem.replace("-", " ").replace("_", " ").title()
+      title = front.get("title") or extract_title(body, fallback)
+      description = front.get("description") or extract_description(body)
+
+      rel = md_path.relative_to(root)
+      if md_path.stem.lower() == "index" and len(rel.parts) == 1:
+        title = "Home"
+      out_html = output_dir / rel.with_suffix(".html")
+
+      rel_parts = rel.parts
+      in_posts_dir = len(rel_parts) > 1 and rel_parts[0] == POSTS_DIR_NAME
+      default_layout = "post" if in_posts_dir else "page"
+      layout = str(front.get("layout", default_layout)).strip().lower()
+      raw_si = front.get("sort_index")
       try:
-        mtime = datetime.fromtimestamp(md_path.stat().st_mtime)
+        sort_index = int(raw_si) if raw_si is not None else None
+      except (ValueError, TypeError):
+        print(f"Warning: invalid sort_index '{raw_si}' in {md_path} — ignoring.", file=sys.stderr)
+        sort_index = None
+
+      extracted_dt = extract_date_dt(front.get("date"), tz_name=timezone, source_path=md_path)
+      if extracted_dt is not None:
+        date_dt = extracted_dt
+      elif md_mtime > 0.0:
+        mtime = datetime.fromtimestamp(md_mtime)
         date_dt = localize_datetime(mtime, tz_name=timezone)
-      except OSError:
-        # Use a localized fallback to avoid aware/naive comparison crashes.
-        # We use 1970-01-01 as a stable 'min' date.
+      else:
         fallback_min = datetime(1970, 1, 1)
         date_dt = localize_datetime(fallback_min, tz_name=timezone)
 
-    fm_tags = front.get("tags", [])
-    if isinstance(fm_tags, list):
+      raw_tags = front.get("tags", [])
+      fm_tags = [str(t) for t in raw_tags] if isinstance(raw_tags, list) else []
+      if md_size >= 0:
+        link_val = front.get("link")
+        new_meta_cache[key] = {
+          "size": md_size,
+          "mtime_ns": md_mtime_ns,
+          "tz": tz_key,
+          "draft": False,
+          "hash": md_hash,
+          "out_html": str(out_html),
+          "title": title,
+          "description": description,
+          "layout": layout,
+          "sort_index": sort_index,
+          "link": link_val if isinstance(link_val, dict) else None,
+          "tags": fm_tags,
+          "date_iso": date_dt.isoformat(),
+        }
+
+    all_files.append((md_path, out_html, title, layout, sort_index, front, body, md_hash, md_mtime))
+
+    if fm_tags:
       seen_slugs: set[str] = set()
-      for tag in fm_tags:
-        tag_str = str(tag)
+      for tag_str in fm_tags:
         slug = _normalize_tag(tag_str)
         if not slug or slug in seen_slugs:
           continue
@@ -160,27 +221,37 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path, timezone
       "title": title,
       "description": description,
       "url": url_rel,
-      "tags": [str(t) for t in fm_tags] if isinstance(fm_tags, list) else [],
+      "tags": fm_tags,
     })
 
   # Sort all_files: index.html first, then by name
   all_files.sort(key=lambda t: (0 if t[0].stem.lower() == "index" else 1, t[0].name))
-  
+
+  if incremental and isinstance(manifest, dict):
+    manifest[_MANIFEST_META_KEY] = new_meta_cache
+
   return all_files, drafts, tags_map, dated_pages, search_entries
 
 
 def _generate_sidecar_files(all_files: list, output_dir: Path,
-                base_url: str, search_entries: list,
-                dated_pages: list,
-                site_name: str = "Blog",
-                search_enabled: bool = True) -> None:
+                            base_url: str, search_entries: list,
+                            dated_pages: list,
+                            site_name: str = "Blog",
+                            search_enabled: bool = True) -> None:
   """Generate sitemap.xml, feed.xml, and search.json."""
   if base_url:
     # ── Generate sitemap.xml ──────────────────────────────────────────────
     sitemap_pages = []
-    for md_path, out_html, *_ in all_files:
+    for entry in all_files:
+      md_path, out_html = entry[0], entry[1]
+      md_mtime = entry[8] if len(entry) > 8 else 0.0
       try:
-        mtime = md_path.stat().st_mtime if md_path.exists() else out_html.stat().st_mtime
+        if md_mtime > 0.0:
+          mtime = md_mtime
+        elif md_path.exists():
+          mtime = md_path.stat().st_mtime
+        else:
+          mtime = out_html.stat().st_mtime
         lastmod = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
       except OSError:
         lastmod = datetime.now().strftime("%Y-%m-%d")
@@ -244,24 +315,27 @@ def _tag_sort_key(entry: tuple, tz_name: Optional[str] = None) -> tuple[int, dat
   return (0, datetime.min.replace(tzinfo=dt_timezone.utc))
 
 
-def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
-             nav_pages: list, template, base_url: str, output_dir: Path,
-             nav_posts_out: Optional[Path], posts_label: str,
-             recent_posts: list, search_enabled: bool = True,
-             sidebar_side: str = "right",
-             timezone: Optional[str] = None) -> int:
+def _generate_tag_indices(tags_map: dict, tag_out_paths: dict,
+                          nav_pages: list, ctx: BuildContext) -> int:
   """Generate tag index pages and return error count."""
   errors = 0
+  assert ctx.output_dir is not None
 
   for tag, tag_pages in tags_map.items():
     tag_out = tag_out_paths[tag]
-    tag_pages_sorted = sorted(tag_pages, key=lambda e: _tag_sort_key(e, tz_name=timezone), reverse=True)
+    tag_pages_sorted = sorted(
+      tag_pages,
+      key=lambda e: _tag_sort_key(e, tz_name=ctx.timezone),
+      reverse=True,
+    )
     try:
-      build_tag_index_html(tag, tag_pages_sorted, tag_out, site_name, nav_pages, template,
-              base_url=base_url, output_root=output_dir,
-              posts_out=nav_posts_out, posts_label=posts_label,
-              recent_posts=recent_posts, search_enabled=search_enabled,
-              sidebar_side=sidebar_side, timezone=timezone)
+      build_tag_index_html(
+        tag, tag_pages_sorted, tag_out, ctx.site_name, nav_pages, ctx.template,
+        base_url=ctx.base_url, output_root=ctx.output_dir,
+        posts_out=ctx.posts_out, posts_label=ctx.posts_label,
+        recent_posts=ctx.recent_posts, search_enabled=ctx.search_enabled,
+        sidebar_side=ctx.sidebar_side, timezone=ctx.timezone,
+      )
       print(f"  [tag]   tags/{_normalize_tag(tag)}.html  ({len(tag_pages)} page(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [tag]   ERROR generating tags/{_normalize_tag(tag)}.html: {exc}")
@@ -269,18 +343,13 @@ def _generate_tag_indices(tags_map: dict, tag_out_paths: dict, site_name: str,
   return errors
 
 
-def _prepare_output(output_dir: Path, theme_dir: Path, root: Path, expected_html: set[Path]) -> list[Path]:
+def _prepare_output(output_dir: Path, theme_dir: Path, root: Path,
+                    expected_html: set[Path]) -> list[Path]:
   """Prepare output directory: create, copy assets, and clean stale files."""
   output_dir.mkdir(parents=True, exist_ok=True)
   copy_theme_assets(theme_dir, output_dir)
   pygments_path = output_dir / _CSS_SUBDIR / "pygments.css"
-  highlight_css = _build_highlight_css()
-  try:
-    needs_pygments = not pygments_path.is_file() or pygments_path.read_text(encoding="utf-8") != highlight_css
-  except OSError:
-    needs_pygments = True
-  if needs_pygments:
-    atomic_write_text(pygments_path, highlight_css, encoding="utf-8")
+  write_text_if_changed(pygments_path, _build_highlight_css(), encoding="utf-8")
   copy_static_assets(root, output_dir)
   stale: list[Path] = []
   if output_dir.is_dir():
@@ -311,31 +380,26 @@ def _print_dry_run_auxiliary(tags_map: dict, tag_out_paths: dict, has_posts_list
     print(f"  [dry-run] (posts listing) posts/index.html  →  {pr}")
 
 
-def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages, 
-                template, base_url, output_dir, nav_posts_out, 
-                posts_label, recent_posts, search_enabled,
-                has_posts_listing, posts_out_path, dated_pages, 
-                posts_collision, all_files, search_entries,
-                sidebar_side: str = "right",
-                timezone: Optional[str] = None) -> int:
+def _generate_auxiliary_pages(tags_map: dict, tag_out_paths: dict, nav_pages: list,
+                              has_posts_listing: bool, posts_out_path: Path,
+                              dated_pages: list, posts_collision: bool,
+                              all_files: list, search_entries: list,
+                              ctx: BuildContext) -> int:
   """Generate tag indices, posts listing, and sidecar files."""
   errors = 0
-  # ── Generate tag index pages ──────────────────────────────────────────
-  errors += _generate_tag_indices(
-    tags_map, tag_out_paths, site_name, nav_pages, template,
-    base_url, output_dir, nav_posts_out, posts_label, recent_posts,
-    search_enabled=search_enabled, sidebar_side=sidebar_side,
-    timezone=timezone,
-  )
+  assert ctx.output_dir is not None
+  errors += _generate_tag_indices(tags_map, tag_out_paths, nav_pages, ctx)
 
   # ── Generate posts listing page ───────────────────────────────────────
   if has_posts_listing:
     try:
-      build_posts_listing_html(dated_pages, posts_out_path, site_name, nav_pages, template,
-                  base_url=base_url, output_root=output_dir,
-                  posts_label=posts_label, posts_out=nav_posts_out,
-                  recent_posts=recent_posts, search_enabled=search_enabled,
-                  sidebar_side=sidebar_side, timezone=timezone)
+      build_posts_listing_html(
+        dated_pages, posts_out_path, ctx.site_name, nav_pages, ctx.template,
+        base_url=ctx.base_url, output_root=ctx.output_dir,
+        posts_label=ctx.posts_label, posts_out=ctx.posts_out,
+        recent_posts=ctx.recent_posts, search_enabled=ctx.search_enabled,
+        sidebar_side=ctx.sidebar_side, timezone=ctx.timezone,
+      )
       print(f"  [posts] posts/index.html  ({len(dated_pages)} post(s))")
     except Exception as exc:  # pylint: disable=broad-exception-caught
       print(f"  [posts] ERROR generating posts/index.html: {exc}")
@@ -344,26 +408,28 @@ def _generate_auxiliary_pages(tags_map, tag_out_paths, site_name, nav_pages,
     print("  [posts] skipped: posts/index.md exists as source file")
 
   # ── Generate sidecar files ────────────────────────────────────────────
-  _generate_sidecar_files(all_files, output_dir, base_url, search_entries, dated_pages,
-              site_name=site_name, search_enabled=search_enabled)
-  
+  _generate_sidecar_files(
+    all_files, ctx.output_dir, ctx.base_url, search_entries, dated_pages,
+    site_name=ctx.site_name, search_enabled=ctx.search_enabled,
+  )
+
   return errors
 
 
-def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir, 
-          nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
-          search_enabled, incremental, manifest, manifest_path, 
-          template_mtime, config_mtime, nav_sig, dry_run, base_url,
-          sidebar_side: str = "right",
-          template=None) -> tuple:
+def _prepare_tasks(all_files: list, root: Path, theme_dir: Path,
+                   ctx: BuildContext, nav_pages: list,
+                   incremental: bool, manifest: dict,
+                   manifest_path: Optional[Path], template_mtime: float,
+                   config_mtime: float, nav_sig: str, dry_run: bool) -> tuple:
   """Determine which pages need rebuilding and plan worker tasks."""
   tasks, ok, skipped = [], 0, 0
+  assert ctx.output_dir is not None
   theme_name = theme_dir.name
   themes_dir = theme_dir.parent
-  tags_out_dir = output_dir / "tags"
+  tags_out_dir = ctx.output_dir / "tags"
 
   for entry in all_files:
-    md_path, out_html, _title, layout, _si, front, body, md_hash = entry
+    md_path, out_html, _title, layout, _si, front, body, md_hash, md_mtime = entry
     try:
       rel = md_path.relative_to(root)
     except ValueError:
@@ -377,25 +443,21 @@ def _prepare_tasks(all_files, root, output_dir, site_name, nav_pages, theme_dir,
       print(f"  [dry-run] {rel}  →  {out_rel}")
       continue
 
-    if incremental and not page_needs_rebuild(md_path, out_html, manifest, template_mtime, config_mtime, nav_sig, md_hash=md_hash):
-      try:
-        out_rel = out_html.relative_to(output_dir)
-      except ValueError:
-        out_rel = out_html
+    if incremental and not page_needs_rebuild(
+      md_path, out_html, manifest, template_mtime, config_mtime, nav_sig, md_hash=md_hash
+    ):
       print(f"  [skip]  {rel}  (unchanged)")
       skipped += 1
       ok += 1
-      if incremental and manifest_path is not None:
+      if manifest_path is not None:
         manifest[str(md_path)] = md_hash
       continue
 
     tasks.append((
       _process_page_worker,
       (
-        md_path, out_html, site_name, nav_pages, theme_name, themes_dir,
-        tags_out_dir, base_url, output_dir, layout, nav_posts_out, posts_label,
-        sanitize, timezone, recent_posts, front, body, search_enabled,
-        sidebar_side, template
+        md_path, out_html, nav_pages, theme_name, themes_dir,
+        tags_out_dir, layout, front, body, ctx, md_mtime
       ),
       rel, md_hash, md_path
     ))
@@ -468,7 +530,9 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   if files:
     print(f"Found {len(files)} Markdown file(s)\n")
 
-  all_files, drafts, tags_map, dated_pages, search_entries = _collect_all_pages(files, root, output_dir, timezone)
+  all_files, drafts, tags_map, dated_pages, search_entries = _collect_all_pages(
+    files, root, output_dir, timezone, manifest=manifest, incremental=incremental
+  )
 
   nav_pages, tag_out_paths, posts_out_path, has_posts_listing, expected_html, posts_collision = _plan_outputs(
     all_files, root, output_dir, tags_map, dated_pages, base_url, search_enabled
@@ -486,51 +550,87 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     for out_path, title, date_dt, desc in sorted(dated_pages, key=lambda t: t[2], reverse=True)[:5]
   ] if dated_pages else []
 
-  nav_sig = compute_nav_signature(nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts) if (nav_pages or nav_posts_out) else ""
+  nav_sig = compute_nav_signature(
+    nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts
+  ) if (nav_pages or nav_posts_out) else ""
+
+  ctx = BuildContext(
+    site_name=site_name,
+    base_url=base_url,
+    output_dir=output_dir,
+    posts_out=nav_posts_out,
+    posts_label=posts_label,
+    recent_posts=recent_posts,
+    sanitize=sanitize,
+    timezone=timezone,
+    search_enabled=search_enabled,
+    sidebar_side=sidebar_side,
+    template=template,
+    resolved_root_index=(output_dir / "index.html").resolve(),
+  )
 
   tasks, ok, skipped = _prepare_tasks(
-    all_files, root, output_dir, site_name, nav_pages, theme_dir, 
-    nav_posts_out, posts_label, sanitize, timezone, recent_posts, 
-    search_enabled, incremental, manifest, manifest_path, template_mtime, 
-    config_mtime, nav_sig, dry_run, base_url, sidebar_side=sidebar_side,
-    template=template
+    all_files, root, theme_dir, ctx, nav_pages,
+    incremental, manifest, manifest_path, template_mtime,
+    config_mtime, nav_sig, dry_run,
   )
 
   if tasks:
-    for fn, args, rel, md_hash, md_path in tasks:
-      try:
-        out = fn(*args)
-        print(f"  ✓  {rel}  →  {out}")
-        ok += 1
-        if incremental and manifest_path is not None:
-          manifest[str(md_path)] = md_hash
-      except Exception as exc:  # pylint: disable=broad-exception-caught
-        print(f"  ✗  {rel}  →  ERROR: {exc}")
-        errors += 1
+    if len(tasks) >= _PARALLEL_THRESHOLD:
+      with ThreadPoolExecutor() as pool:
+        futures = [
+          (pool.submit(fn, *args), rel, md_hash, md_path)
+          for fn, args, rel, md_hash, md_path in tasks
+        ]
+        for fut, rel, md_hash, md_path in futures:
+          try:
+            out = fut.result()
+            print(f"  ✓  {rel}  →  {out}")
+            ok += 1
+            if incremental and manifest_path is not None:
+              manifest[str(md_path)] = md_hash
+          except Exception as exc:  # pylint: disable=broad-exception-caught
+            print(f"  ✗  {rel}  →  ERROR: {exc}")
+            errors += 1
+    else:
+      for fn, args, rel, md_hash, md_path in tasks:
+        try:
+          out = fn(*args)
+          print(f"  ✓  {rel}  →  {out}")
+          ok += 1
+          if incremental and manifest_path is not None:
+            manifest[str(md_path)] = md_hash
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+          print(f"  ✗  {rel}  →  ERROR: {exc}")
+          errors += 1
 
   if dry_run:
     _print_dry_run_auxiliary(tags_map, tag_out_paths, has_posts_listing, posts_out_path)
     return ok, errors, skipped
 
   # ── Generate tag indices, posts listing, and sidecar files ─────────────
+  aux_sig = compute_aux_signature(
+    tags_map, dated_pages, search_entries, base_url,
+    posts_label, search_enabled, site_name, sidebar_side,
+  )
   aux_up_to_date = (
     incremental
-    and not tasks
     and not stale_removed
+    and manifest.get(_MANIFEST_AUX_KEY) == aux_sig
     and all(p.exists() for p in expected_html)
   )
   if not aux_up_to_date:
     errors += _generate_auxiliary_pages(
-      tags_map, tag_out_paths, site_name, nav_pages, template, base_url, 
-      output_dir, nav_posts_out, posts_label, recent_posts, search_enabled,
-      has_posts_listing, posts_out_path, dated_pages, posts_collision, all_files, 
-      search_entries, sidebar_side=sidebar_side, timezone=timezone
+      tags_map, tag_out_paths, nav_pages, has_posts_listing,
+      posts_out_path, dated_pages, posts_collision, all_files,
+      search_entries, ctx,
     )
 
   if incremental and manifest_path is not None:
     manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
     manifest[_MANIFEST_CONFIG_KEY] = config_mtime
     manifest[_MANIFEST_NAV_KEY] = nav_sig
+    manifest[_MANIFEST_AUX_KEY] = aux_sig
     save_build_manifest(manifest_path, manifest)
 
   if not dry_run:

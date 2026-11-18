@@ -15,11 +15,29 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Common utilities and constants for Hanma."""
+from dataclasses import dataclass
 import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+
+@dataclass(frozen=True)
+class BuildContext:
+  """Shared site-wide configuration and template context for a build."""
+  site_name: str
+  base_url: str = ""
+  output_dir: Optional[Path] = None
+  posts_out: Optional[Path] = None
+  posts_label: str = "Blog"
+  recent_posts: Optional[list] = None
+  sanitize: bool = False
+  timezone: Optional[str] = None
+  search_enabled: bool = True
+  sidebar_side: str = "right"
+  template: Any = None
+  resolved_root_index: Optional[Path] = None
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -56,6 +74,17 @@ def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None
     raise
 
 
+def write_text_if_changed(path: Path, content: str, encoding: str = "utf-8") -> bool:
+  """Write content atomically only when path is missing or its contents differ."""
+  try:
+    if path.is_file() and path.read_text(encoding=encoding) == content:
+      return False
+  except OSError:
+    pass
+  atomic_write_text(path, content, encoding=encoding)
+  return True
+
+
 def get_root_rel(output_root: Optional[Path], out_path: Path) -> str:
   """Calculate the relative path from the output file's directory back to root.
 
@@ -63,9 +92,9 @@ def get_root_rel(output_root: Optional[Path], out_path: Path) -> str:
   """
   if not output_root:
     return ""
-  
+
   root_rel = os.path.relpath(output_root, out_path.parent).replace(os.sep, "/")
   if root_rel == ".":
     return ""
-  
+
   return root_rel.rstrip("/") + "/"

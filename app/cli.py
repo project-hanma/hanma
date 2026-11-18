@@ -18,7 +18,7 @@
 import argparse
 import sys
 import threading
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 
@@ -461,11 +461,15 @@ class QuietHandler(SimpleHTTPRequestHandler):
         
     # Ensure the resolved path is strictly within the serving directory.
     # self.server.directory is set by SimpleHTTPRequestHandler
-    serve_dir = Path(self.directory).resolve()
+    serve_dir = getattr(self.server, "resolved_directory", None)
+    if serve_dir is None or not isinstance(serve_dir, Path):
+      serve_dir = Path(self.directory).resolve()
+      if hasattr(self, "server") and self.server is not None:
+        self.server.resolved_directory = serve_dir  # type: ignore[attr-defined]
     if not resolved.is_relative_to(serve_dir):
       # Attempted directory traversal via symlink or other means
       return "/dev/null/non-existent"
-        
+
     return str(resolved)
 
   def log_message(self, format, *args):  # pylint: disable=redefined-builtin
@@ -479,9 +483,10 @@ class QuietHandler(SimpleHTTPRequestHandler):
         pass
 
 
-class _HanmaHTTPServer(HTTPServer):
-  """HTTPServer subclass with typed directory attribute for QuietHandler."""
+class _HanmaHTTPServer(ThreadingHTTPServer):
+  """ThreadingHTTPServer subclass with typed directory attributes for QuietHandler."""
   directory: str = ""
+  resolved_directory: Optional[Path] = None
 
 
 def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
@@ -491,7 +496,8 @@ def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
     sys.exit(1)
   try:
     server = _HanmaHTTPServer((host, port), QuietHandler)
-    server.directory = str(serve_dir) # SimpleHTTPRequestHandler uses this
+    server.directory = str(serve_dir)  # SimpleHTTPRequestHandler uses this
+    server.resolved_directory = serve_dir.resolve()
   except OSError as exc:
     if exc.errno == 98 or "already in use" in str(exc).lower():
       print(f"Error: port {port} is already in use. Try --port <other>")
