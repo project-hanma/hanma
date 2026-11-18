@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.build import _run_build
+from app.config import load_site_config
 from app.files import find_markdown_files
 from app.theme import _load_theme_impl
 
@@ -64,13 +65,20 @@ class _HanmaEventHandler(_WatchdogHandler):
 
   def _is_relevant(self, path: str) -> bool:
     p = Path(path)
-    if self._output_dir and p.resolve().is_relative_to(self._output_dir):
+    is_template = p.name == "template.html"
+    if not is_template and p.suffix.lower() not in self._RELEVANT_SUFFIXES:
       return False
-    if self._is_hidden(p):
+    try:
+      resolved = p.resolve()
+    except OSError:
       return False
-    if p.name == "template.html" and p.resolve().is_relative_to(self._theme_dir):
-      return True
-    return p.suffix.lower() in self._RELEVANT_SUFFIXES
+    if self._output_dir and resolved.is_relative_to(self._output_dir):
+      return False
+    if self._is_hidden(resolved):
+      return False
+    if is_template:
+      return resolved.is_relative_to(self._theme_dir)
+    return True
 
   def _schedule_rebuild(self) -> None:
     with self._lock:
@@ -201,21 +209,54 @@ def watch_and_rebuild(root: Path, output_dir: Path, site_name: str,
     with build_lock:
       print("\n  [watch] change detected, rebuilding...")
       try:
+        active_site_name = site_name
+        active_base_url = base_url
+        active_posts_label = posts_label
+        active_incremental = incremental
+        active_sanitize = sanitize
+        active_timezone = timezone
+        active_search_enabled = search_enabled
+        active_sidebar_side = sidebar_side
+        active_theme_dir = theme_dir
         active_template = template
-        if (theme_dir / "template.html").is_file():
+
+        if config_path and config_path.is_file():
+          cfg = load_site_config(config_path)
+          if cfg:
+            active_site_name = cfg.get("name", site_name)
+            active_base_url = cfg.get("base_url", base_url)
+            active_posts_label = str(cfg.get("posts_label", posts_label))
+            active_incremental = bool(incremental or cfg.get("incremental", False))
+            active_sanitize = bool(sanitize or cfg.get("sanitize", False))
+            active_timezone = cfg.get("timezone", timezone)
+            active_search_enabled = bool(cfg.get("search", search_enabled))
+            raw_side = str(cfg.get("sidebar_side", sidebar_side)).strip().lower()
+            if raw_side in {"left", "right"}:
+              active_sidebar_side = raw_side
+            cfg_theme = cfg.get("theme")
+            if isinstance(cfg_theme, str) and cfg_theme.strip():
+              candidate_dir = theme_dir.parent / cfg_theme.strip()
+              if candidate_dir.is_dir():
+                active_theme_dir = candidate_dir
+
+        if (active_theme_dir / "template.html").is_file():
           try:
-            active_template, _ = _load_theme_impl(theme_dir.name, theme_dir.parent)
+            active_template, _ = _load_theme_impl(
+              active_theme_dir.name, active_theme_dir.parent
+            )
           except Exception:  # pylint: disable=broad-exception-caught
             pass
-        _run_build(root, output_dir, site_name, active_template, theme_dir,
-             base_url=base_url, posts_label=posts_label,
-             config_path=config_path,
-             incremental=incremental,
-             manifest_path=manifest_path,
-             sanitize=sanitize,
-             timezone=timezone,
-             search_enabled=search_enabled,
-             sidebar_side=sidebar_side)
+        _run_build(
+          root, output_dir, active_site_name, active_template, active_theme_dir,
+          base_url=active_base_url, posts_label=active_posts_label,
+          config_path=config_path,
+          incremental=active_incremental,
+          manifest_path=manifest_path,
+          sanitize=active_sanitize,
+          timezone=active_timezone,
+          search_enabled=active_search_enabled,
+          sidebar_side=active_sidebar_side,
+        )
       except Exception as exc:  # pylint: disable=broad-exception-caught
         print(f"  [watch] build error: {exc}")
 

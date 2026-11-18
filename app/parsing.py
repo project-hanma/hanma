@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Front matter and markdown parsing utilities for Hanma."""
+import functools
 import re
 import sys
 from datetime import datetime, timezone
@@ -116,6 +117,7 @@ def localize_datetime(dt: datetime, tz_name: Optional[str] = None) -> datetime:
   return dt.astimezone(tz)
 
 
+@functools.lru_cache(maxsize=8)
 def _resolve_tz(tz_name: Optional[str]) -> timezone | ZoneInfo:
   """Resolve a timezone name string to a ZoneInfo or UTC fallback."""
   if not tz_name or ZoneInfo is None:

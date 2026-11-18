@@ -16,6 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 """File and directory utilities for Hanma."""
 import errno
+import stat
 import sys
 from pathlib import Path
 
@@ -36,21 +37,20 @@ def find_markdown_files(root: Path) -> list[Path]:
   def has_dotpart(p: Path) -> bool:
     return any(part.startswith(".") for part in p.relative_to(root).parts)
 
-  def is_within_root(p: Path) -> bool:
+  def is_valid_markdown(p: Path) -> bool:
+    if p.suffix.lower() not in {".md", ".markdown"} or p.name in IGNORE_NAMES:
+      return False
+    if has_dotpart(p):
+      return False
     try:
-      return p.resolve().is_relative_to(resolved_root)
+      if not p.resolve().is_relative_to(resolved_root):
+        return False
+      st = p.stat()
     except OSError:
       return False
+    return stat.S_ISREG(st.st_mode) and st.st_size > 0
 
-  return sorted(
-    p for p in root.rglob("*")
-    if p.suffix.lower() in {".md", ".markdown"}
-    and is_within_root(p)
-    and p.is_file()
-    and p.stat().st_size > 0
-    and not has_dotpart(p)
-    and p.name not in IGNORE_NAMES
-  )
+  return sorted(p for p in root.rglob("*") if is_valid_markdown(p))
 
 
 def copy_static_assets(source_root: Path, output_root: Path) -> None:
