@@ -594,3 +594,121 @@ def test_sanitization_strips_style_and_unpermitted_class_id(tmp_path):
     assert 'class="allowed-class"' in html_content
     assert 'id="allowed-id"' in html_content
 
+
+# ---------------------------------------------------------------------------
+# 9. Audit 1118 Optimizations
+# ---------------------------------------------------------------------------
+
+def test_resolve_tz_is_cached():
+    """PLAN-audit-1118 §2.3: _resolve_tz caches ZoneInfo lookups."""
+    from app.parsing import _resolve_tz
+
+    _resolve_tz.cache_clear()
+    tz1 = _resolve_tz("America/New_York")
+    tz2 = _resolve_tz("America/New_York")
+    assert tz1 is tz2
+    assert _resolve_tz.cache_info().hits >= 1
+
+
+def test_write_text_if_changed_skips_identical_writes(tmp_path):
+    """PLAN-audit-1118 §2.5: write_text_if_changed avoids rewriting identical files."""
+    from app.utils import write_text_if_changed
+
+    target = tmp_path / "sample.html"
+    assert write_text_if_changed(target, "hello") is True
+    ino_before = target.stat().st_ino
+    assert write_text_if_changed(target, "hello") is False
+    assert target.stat().st_ino == ino_before
+    assert write_text_if_changed(target, "updated") is True
+    assert target.read_text(encoding="utf-8") == "updated"
+
+
+def test_incremental_build_caches_metadata_and_skips_unchanged_aux(tmp_path):
+    """PLAN-audit-1118 §2.1 & §2.5: incremental builds cache page metadata and aux signature."""
+    from app.build import _run_build
+    from app.theme import _load_theme_impl
+    from app.utils import _THEMES_DIR
+    from tests.helpers import write_file
+
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    manifest_path = out_dir / ".hanma_manifest.json"
+    write_file(site_dir / "index.md", "# Home\n\nWelcome.")
+    write_file(site_dir / "about.md", "# About\n\nInitial body.")
+    write_file(site_dir / "posts" / "p1.md", "---\ntitle: Post 1\ndate: 2026-01-01\ntags: [news]\n---\n\nBody.")
+
+    template, theme_dir = _load_theme_impl("default", _THEMES_DIR)
+    ok1, err1, skip1 = _run_build(
+        site_dir, out_dir, "Test", template, theme_dir,
+        incremental=True, manifest_path=manifest_path,
+    )
+    assert (ok1, err1, skip1) == (3, 0, 0)
+    tag_ino = (out_dir / "tags" / "news.html").stat().st_ino
+
+    # Edit only the body of about.md (no tag/post/title/description change)
+    write_file(site_dir / "about.md", "# About\n\nUpdated body text.")
+    ok2, err2, skip2 = _run_build(
+        site_dir, out_dir, "Test", template, theme_dir,
+        incremental=True, manifest_path=manifest_path,
+    )
+    assert err2 == 0
+    assert skip2 == 2
+    assert ok2 == 3
+    # Auxiliary tag page was not rewritten
+    assert (out_dir / "tags" / "news.html").stat().st_ino == tag_ino
+
+
+def test_parallel_build_renders_large_site(tmp_path):
+    """PLAN-audit-1118 §2.6: _run_build uses ThreadPoolExecutor cleanly for >= 20 pages."""
+    from app.build import _run_build
+    from app.theme import _load_theme_impl
+    from app.utils import _THEMES_DIR
+    from tests.helpers import write_file
+
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    write_file(site_dir / "index.md", "# Home\n\nIndex.")
+    for i in range(22):
+        write_file(site_dir / f"page_{i:02d}.md", f"# Page {i}\n\nContent for page {i}.")
+
+    template, theme_dir = _load_theme_impl("default", _THEMES_DIR)
+    ok, err, skip = _run_build(site_dir, out_dir, "Parallel", template, theme_dir)
+    assert (ok, err, skip) == (23, 0, 0)
+    assert (out_dir / "page_21.html").is_file()
+
+
+def test_http_server_is_threaded_and_caches_resolved_dir(tmp_path):
+    """PLAN-audit-1118 §3.1: _HanmaHTTPServer is ThreadingHTTPServer and caches serve_dir."""
+    from http.server import ThreadingHTTPServer
+    from app.cli import _HanmaHTTPServer, QuietHandler
+
+    assert issubclass(_HanmaHTTPServer, ThreadingHTTPServer)
+
+    mock_server = MagicMock()
+    mock_server.directory = str(tmp_path)
+    mock_server.resolved_directory = None
+
+    with patch.object(QuietHandler, '__init__', return_value=None):
+        handler = QuietHandler()
+        handler.server = mock_server
+        handler.directory = str(tmp_path)
+        res = handler.translate_path("/index.html")
+        assert res == str(tmp_path.resolve() / "index.html")
+        assert mock_server.resolved_directory == tmp_path.resolve()
+
+
+def test_watch_event_handler_filters_irrelevant_suffixes_early(tmp_path):
+    """PLAN-audit-1118 §3.2: _HanmaEventHandler skips irrelevant suffixes before resolve."""
+    from app.watch import _HanmaEventHandler
+
+    site_dir = tmp_path / "site"
+    theme_dir = tmp_path / "themes" / "default"
+    site_dir.mkdir(parents=True)
+    theme_dir.mkdir(parents=True)
+
+    handler = _HanmaEventHandler(lambda: None, site_dir, theme_dir)
+    assert handler._is_relevant(str(site_dir / "note.txt")) is False
+    assert handler._is_relevant(str(site_dir / "page.md")) is True
+    assert handler._is_relevant(str(theme_dir / "template.html")) is True
+
+

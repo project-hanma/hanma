@@ -18,6 +18,7 @@
 import html
 import os
 import sys
+import threading
 try:
   from markupsafe import Markup
 except ImportError:
@@ -95,13 +96,13 @@ def _build_allowed_attrs() -> dict[str, list[str]]:
 
 
 _ALLOWED_ATTRS = _build_allowed_attrs()
-_MD_INSTANCE: Optional[markdown.Markdown] = None
+_MD_LOCAL = threading.local()
 
 
 def _get_markdown_instance() -> markdown.Markdown:
-  """Return a reusable Markdown instance, resetting state before each conversion."""
-  global _MD_INSTANCE  # pylint: disable=global-statement
-  if _MD_INSTANCE is None:
+  """Return a reusable thread-local Markdown instance, resetting state before each conversion."""
+  md = getattr(_MD_LOCAL, "instance", None)
+  if md is None:
     extensions: list[str | markdown.extensions.Extension] = [
       MetaExtension(),
       TocExtension(permalink=True, toc_depth="2-4"),
@@ -116,10 +117,11 @@ def _get_markdown_instance() -> markdown.Markdown:
       "markdown.extensions.sane_lists",
       "markdown.extensions.smarty",
     ]
-    _MD_INSTANCE = markdown.Markdown(extensions=extensions, output_format="html")
+    md = markdown.Markdown(extensions=extensions, output_format="html")
+    _MD_LOCAL.instance = md
   else:
-    _MD_INSTANCE.reset()
-  return _MD_INSTANCE
+    md.reset()
+  return md
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             nav_pages: Optional[list] = None,
@@ -136,7 +138,9 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             front_matter: Optional[dict] = None,
             body: Optional[str] = None,
             search_enabled: bool = True,
-            sidebar_side: str = "right") -> Path:
+            sidebar_side: str = "right",
+            source_mtime: Optional[float] = None,
+            resolved_root_index: Optional[Path] = None) -> Path:
 
   """Read a .md file and write the HTML output to out_path.
 
@@ -228,15 +232,16 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
                posts_out=posts_out, posts_label=posts_label,
                recent_posts=recent_posts)
 
-  mtime_naive = datetime.fromtimestamp(md_path.stat().st_mtime)
+  raw_mtime = source_mtime if source_mtime is not None else md_path.stat().st_mtime
+  mtime_naive = datetime.fromtimestamp(raw_mtime)
   mtime = localize_datetime(mtime_naive, tz_name=timezone)
   last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
   source_rel = md_path.name
 
   sitemap_link = _clean_if_needed(_sitemap_link(out_path, output_root, base_url))
-  
+
   if search_enabled:
-    search_url = _clean_if_needed(_search_json_url(out_path, output_root, base_url))
+    search_url = _search_json_url(out_path, output_root, base_url)
   else:
     search_url = ""
 
@@ -244,7 +249,12 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   # 1. Homepage (root index.html) shows only site_name
   # 2. If page title matches site_name, show only site_name
   # 3. Otherwise, use "Site Name - Page Title"
-  is_root_index = output_root and out_path.resolve() == (output_root / "index.html").resolve()
+  if resolved_root_index is not None:
+    is_root_index = out_path.resolve() == resolved_root_index
+  else:
+    is_root_index = bool(
+      output_root and out_path.resolve() == (output_root / "index.html").resolve()
+    )
   titles_match = site_name and title.lower() == site_name.lower()
 
   root_rel = get_root_rel(output_root, out_path)

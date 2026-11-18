@@ -24,7 +24,7 @@ from typing import Optional
 
 from app.nav import get_nav_data
 from app.parsing import get_localized_now
-from app.utils import get_root_rel, atomic_write_text
+from app.utils import BuildContext, get_root_rel, write_text_if_changed
 
 
 def _normalize_tag(tag: str) -> str:
@@ -64,51 +64,46 @@ def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str)
 
 
 def _make_generated_page(content_html: str, title: str, description: str,
-             out_path: Path, site_name: str,
-             nav_pages: list[tuple],
-             template,
-             base_url: str = "",
+             out_path: Path, nav_pages: list[tuple],
+             ctx: BuildContext,
              sitemap_link: str = "",
-             search_json_url: str = "search.json",
-             output_root: Optional[Path] = None,
-             posts_out: Optional[Path] = None,
-             posts_label: str = "Blog",
-             recent_posts: Optional[list] = None,
-             search_enabled: bool = True,
-             sidebar_side: str = "right",
-             timezone: Optional[str] = None) -> Path:
+             search_json_url: str = "search.json") -> Path:
   """Render a generated (non-markdown) page using the active theme template."""
-  nav_items = get_nav_data(out_path, nav_pages, output_root=output_root,
-               posts_out=posts_out, posts_label=posts_label,
-               recent_posts=recent_posts)
-  now = get_localized_now(timezone)
-  titles_match = site_name and title.lower() == site_name.lower()
-  if site_name and not titles_match:
-    display_title = f"{site_name} - {title}"
+  nav_items = get_nav_data(out_path, nav_pages, output_root=ctx.output_dir,
+               posts_out=ctx.posts_out, posts_label=ctx.posts_label,
+               recent_posts=ctx.recent_posts)
+  now = get_localized_now(ctx.timezone)
+  titles_match = ctx.site_name and title.lower() == ctx.site_name.lower()
+  if ctx.site_name and not titles_match:
+    display_title = f"{ctx.site_name} - {title}"
   else:
-    display_title = site_name or title
+    display_title = ctx.site_name or title
 
-  root_rel = get_root_rel(output_root, out_path)
+  root_rel = get_root_rel(ctx.output_dir, out_path)
+  page_url = (
+    os.path.relpath(out_path, ctx.output_dir).replace(os.sep, "/")
+    if ctx.output_dir else out_path.name
+  )
 
-  page_html = template.render(
+  page_html = ctx.template.render(
     title=display_title,
     description=description,
     author_meta="",
     keywords_meta="",
     refresh_meta="",
-    site_name=site_name,
+    site_name=ctx.site_name,
     content=content_html,
     nav_items=nav_items,
     root_rel=root_rel,
-    base_url=base_url,
-    page_url=os.path.relpath(out_path, output_root).replace(os.sep, "/") if output_root else out_path.name,
+    base_url=ctx.base_url,
+    page_url=page_url,
     source_file="(generated)",
     last_updated=now.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1),
     sitemap_link=sitemap_link,
-    search_json_url=search_json_url if search_enabled else "",
-    sidebar_side=sidebar_side,
+    search_json_url=search_json_url if ctx.search_enabled else "",
+    sidebar_side=ctx.sidebar_side,
   )
-  atomic_write_text(out_path, page_html, encoding="utf-8")
+  write_text_if_changed(out_path, page_html, encoding="utf-8")
   return out_path
 
 
@@ -152,18 +147,23 @@ def build_tag_index_html(tag: str, pages: list[tuple], out_path: Path,
     f'<h1>Pages tagged &#8220;<em>{safe_tag}</em>&#8221;</h1>\n'
     f'<ul class="tag-index">\n{items_html}\n</ul>'
   )
-  return _make_generated_page(
-    content_html, f'Tag: {tag}', f'Pages tagged {tag}',
-    out_path, site_name, nav_pages, template,
+  ctx = BuildContext(
+    site_name=site_name,
     base_url=base_url,
-    sitemap_link=_sitemap_link(out_path, output_root, base_url),
-    search_json_url=_search_json_url(out_path, output_root, base_url),
-    output_root=output_root,
-    posts_out=posts_out, posts_label=posts_label,
+    output_dir=output_root,
+    posts_out=posts_out,
+    posts_label=posts_label,
     recent_posts=recent_posts,
+    timezone=timezone,
     search_enabled=search_enabled,
     sidebar_side=sidebar_side,
-    timezone=timezone,
+    template=template,
+  )
+  return _make_generated_page(
+    content_html, f'Tag: {tag}', f'Pages tagged {tag}',
+    out_path, nav_pages, ctx,
+    sitemap_link=_sitemap_link(out_path, output_root, base_url),
+    search_json_url=_search_json_url(out_path, output_root, base_url),
   )
 
 
@@ -210,16 +210,21 @@ def build_posts_listing_html(dated_pages: list[tuple], out_path: Path,
   items_html = "\n".join(items) if items else "  <li><em>No posts found.</em></li>"
   safe_label = html.escape(posts_label)
   content_html = f'<h1>{safe_label}</h1>\n<ul class="post-list">\n{items_html}\n</ul>'
-  return _make_generated_page(
-    content_html, posts_label, f"A listing of all {posts_label.lower()} posts.",
-    out_path, site_name, nav_pages, template,
+  ctx = BuildContext(
+    site_name=site_name,
     base_url=base_url,
-    sitemap_link=_sitemap_link(out_path, output_root, base_url),
-    search_json_url=_search_json_url(out_path, output_root, base_url),
-    output_root=output_root,
-    posts_out=posts_out, posts_label=posts_label,
+    output_dir=output_root,
+    posts_out=posts_out,
+    posts_label=posts_label,
     recent_posts=recent_posts,
+    timezone=timezone,
     search_enabled=search_enabled,
     sidebar_side=sidebar_side,
-    timezone=timezone,
+    template=template,
+  )
+  return _make_generated_page(
+    content_html, posts_label, f"A listing of all {posts_label.lower()} posts.",
+    out_path, nav_pages, ctx,
+    sitemap_link=_sitemap_link(out_path, output_root, base_url),
+    search_json_url=_search_json_url(out_path, output_root, base_url),
   )
