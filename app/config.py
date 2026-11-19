@@ -17,13 +17,43 @@
 """Configuration loading and validation for Hanma."""
 import sys
 from pathlib import Path
+from typing import Any, Optional
+from urllib.parse import urlsplit
 
-try:
-  import yaml
-except ImportError as exc:
-  raise RuntimeError(
-    "Required package 'pyyaml' not found. Install it with:  pip install pyyaml"
-  ) from exc
+from app.utils import YAMLError, safe_load_yaml
+
+_BOOL_KEYS = {"serve", "watch", "incremental", "search", "sanitize"}
+_STR_KEYS = {
+  "name", "base_url", "output", "theme", "posts_label",
+  "host", "timezone", "sidebar_side",
+}
+
+
+def validate_base_url(base_url: str) -> str:
+  """Validate that base_url is empty or a well-formed http/https URL."""
+  cleaned = str(base_url).strip() if base_url is not None else ""
+  if not cleaned:
+    return ""
+  if any(ord(c) < 0x20 or ord(c) == 0x7f or c.isspace() for c in cleaned):
+    raise ValueError(f"Invalid base_url '{base_url}': must not contain whitespace or control chars.")
+  parsed = urlsplit(cleaned)
+  if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+    raise ValueError(f"Invalid base_url '{base_url}': must be an http:// or https:// URL.")
+  return cleaned
+
+
+def _coerce_bool(key: str, val: Any) -> Optional[bool]:
+  """Coerce YAML config values to bool cleanly, avoiding truthy 'false' strings."""
+  if isinstance(val, bool):
+    return val
+  if isinstance(val, str):
+    low = val.strip().lower()
+    if low in {"true", "yes", "1", "on"}:
+      return True
+    if low in {"false", "no", "0", "off"}:
+      return False
+  print(f"Warning: invalid boolean value for '{key}' ({val!r}) — ignoring.", file=sys.stderr)
+  return None
 
 
 def load_site_config(config_path: Path) -> dict:
@@ -35,15 +65,31 @@ def load_site_config(config_path: Path) -> dict:
   if not config_path.is_file():
     return {}
   try:
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-  except yaml.YAMLError as exc:
+    raw = safe_load_yaml(config_path.read_text(encoding="utf-8")) or {}
+  except YAMLError as exc:
     print(f"Warning: could not parse {config_path}: {exc}", file=sys.stderr)
     return {}
   if not isinstance(raw, dict):
     return {}
-  allowed = {"name", "base_url", "output", "theme", "serve", "port", "host", "watch", "incremental",
-       "posts_label", "sanitize", "timezone", "search", "sidebar_side"}
-  return {k: v for k, v in raw.items() if k in allowed}
+  allowed = _BOOL_KEYS | _STR_KEYS | {"port"}
+  cleaned: dict[str, Any] = {}
+  for k, v in raw.items():
+    if k not in allowed:
+      continue
+    if k in _BOOL_KEYS:
+      coerced = _coerce_bool(k, v)
+      if coerced is not None:
+        cleaned[k] = coerced
+    elif k in _STR_KEYS:
+      if v is None:
+        cleaned[k] = None
+      elif isinstance(v, (str, int, float)):
+        cleaned[k] = str(v)
+      else:
+        print(f"Warning: invalid string value for '{k}' — ignoring.", file=sys.stderr)
+    else:
+      cleaned[k] = v
+  return cleaned
 
 
 DEFAULT_CONFIG_CONTENT = """# hanma.yml — default site configuration
@@ -87,7 +133,7 @@ theme: default
 # Enable search functionality and show the search box.
 search: true
 
-# Sanitize the generated HTML using 'bleach' if available.
+# Sanitize the generated HTML using 'nh3' if available.
 # sanitize: false
 
 # Label for the posts listing link in the navigation bar.

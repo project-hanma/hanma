@@ -33,7 +33,10 @@ _MANIFEST_META_KEY     = "_page_meta"
 
 def compute_aux_signature(tags_map: dict, dated_pages: list, search_entries: list,
                           base_url: str, posts_label: str, search_enabled: bool,
-                          site_name: str, sidebar_side: str) -> str:
+                          site_name: str, sidebar_side: str,
+                          nav_sig: str = "",
+                          timezone: Optional[str] = None,
+                          lastmod_dates: Optional[list[tuple[str, str]]] = None) -> str:
   """Return a stable hash of inputs that affect tag indices, posts listing, and sidecars."""
   payload = {
     "base_url": base_url,
@@ -41,6 +44,9 @@ def compute_aux_signature(tags_map: dict, dated_pages: list, search_entries: lis
     "search_enabled": search_enabled,
     "site_name": site_name,
     "sidebar_side": sidebar_side,
+    "nav_sig": nav_sig,
+    "timezone": timezone or "",
+    "lastmod_dates": lastmod_dates or [],
     "tags": {
       tag: [
         [str(p), title, dt.isoformat() if hasattr(dt, "isoformat") else str(dt)]
@@ -58,27 +64,29 @@ def compute_aux_signature(tags_map: dict, dated_pages: list, search_entries: lis
 
 
 def compute_nav_signature(nav_pages: list, posts_out: Optional[Path] = None,
-             recent_posts: Optional[list] = None) -> str:
+             recent_posts: Optional[list] = None,
+             posts_label: str = "Blog") -> str:
   """Return a stable hash of the current nav page set.
 
   nav_pages is a list of (out_html, title, md_path, layout, sort_index, link_data) tuples.
-  The signature covers the output paths and titles so that any addition,
-  removal, or rename forces a full nav rebuild.
-  Also includes posts_out so that adding/removing the first post triggers
-  a rebuild of all pages to update the nav link.
+  The signature covers the output paths, titles, and sort_index so that any addition,
+  removal, rename, or reorder forces a full nav rebuild.
+  Also includes posts_out and posts_label so that adding/removing the first post or
+  renaming the posts label triggers a rebuild of all pages to update the nav link.
   Includes recent_posts titles and paths so changes in the blog dropdown
   trigger a rebuild of the nav on all pages.
   """
   entries = []
   for entry in nav_pages:
     page_html, page_title = entry[0], entry[1]
+    sort_index = entry[4] if len(entry) > 4 else None
     link_data = entry[5] if len(entry) > 5 else None
-    entries.append(f"PAGE:{page_html}:{page_title}")
+    entries.append(f"PAGE:{page_html}:{page_title}:{sort_index}")
     if isinstance(link_data, dict) and link_data.get("url"):
       entries.append(f"LINK:{link_data.get('url')}:{link_data.get('target', '')}")
 
   if posts_out:
-    entries.append(f"POSTS:{posts_out}")
+    entries.append(f"POSTS:{posts_out}:{posts_label}")
   if recent_posts:
     for out_html, title in recent_posts:
       entries.append(f"RECENT:{out_html}:{title}")
@@ -109,7 +117,8 @@ def save_build_manifest(manifest_path: Path, manifest: dict) -> None:
     atomic_write_text(
       manifest_path,
       json.dumps(manifest, indent=2) + "\n",
-      encoding="utf-8"
+      encoding="utf-8",
+      mode=0o600,
     )
   except OSError as exc:
     print(f"  [manifest] warning: could not save {manifest_path}: {exc}", file=sys.stderr)

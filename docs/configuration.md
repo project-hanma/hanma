@@ -13,7 +13,7 @@ host: 127.0.0.1         # HTTP server bind address
 watch: false            # watch for changes and rebuild (true/false)
 incremental: false      # only rebuild changed pages (true/false)
 search: true            # enable client-side search and generate search.json (true/false)
-sanitize: false         # sanitize generated HTML using bleach (true/false)
+sanitize: false         # sanitize generated HTML using nh3 (true/false)
 timezone: UTC           # timezone name (e.g. America/New_York)
 posts_label: Blog       # label for the posts listing link in the nav (default: "Blog")
 sidebar_side: right     # sidebar position for supported themes (narwhal, glassmorphic) (left/right)

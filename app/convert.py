@@ -18,7 +18,6 @@
 import html
 import os
 import sys
-import threading
 try:
   from markupsafe import Markup
 except ImportError:
@@ -29,7 +28,7 @@ except ImportError:
     Markup = str  # type: ignore
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 try:
   import markdown
@@ -41,21 +40,17 @@ try:
   from markdown.extensions.attr_list import AttrListExtension
   from markdown.extensions.def_list import DefListExtension
   from markdown.extensions.abbr import AbbrExtension
-  from markdown.extensions.meta import MetaExtension
 except ImportError as exc:
   raise RuntimeError(
     "Required package 'markdown' not found. "
-    "Install it with:  pip install markdown pygments pyyaml watchdog"
+    "Install it with:  pip install markdown pygments pyyaml watchdog nh3"
   ) from exc
 
 try:
-  import bleach
-  from bleach.css_sanitizer import CSSSanitizer as _CSSSanitizerCls
-  _BLEACH_AVAILABLE = True
-  _CSS_SANITIZER: Optional[Any] = _CSSSanitizerCls()
+  import nh3
+  _NH3_AVAILABLE = True
 except ImportError:
-  _BLEACH_AVAILABLE = False
-  _CSS_SANITIZER = None
+  _NH3_AVAILABLE = False
 
 from app.nav import get_nav_data
 from app.pages import _normalize_tag, _search_json_url, _sitemap_link
@@ -65,12 +60,12 @@ from app.parsing import (
 )
 from app.utils import get_root_rel, _THEMES_DIR, atomic_write_text
 
-_ALLOWED_TAGS = [
+_ALLOWED_TAGS: set[str] = {
   'a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol',
   'strong', 'ul', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'div',
   'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'br',
   'del', 'sup', 'sub', 'dl', 'dt', 'dd', 'details', 'summary'
-]
+}
 
 _ALLOWED_CLASS_TAGS = {
   'a', 'abbr', 'b', 'blockquote', 'code', 'del', 'details', 'div', 'dl', 'dt', 'dd',
@@ -82,32 +77,34 @@ _ALLOWED_ID_TAGS = {
   'a', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'p', 'pre', 'span', 'sup', 'table'
 }
 
+_ALLOWED_URL_SCHEMES: set[str] = {"http", "https", "mailto"}
 
-def _build_allowed_attrs() -> dict[str, list[str]]:
-  attrs: dict[str, list[str]] = {
-    'a': ['href', 'title', 'rel', 'aria-current'],
-    'img': ['src', 'alt', 'title', 'width', 'height'],
+
+def _build_allowed_attrs() -> dict[str, set[str]]:
+  # Note: 'rel' on 'a' is omitted because nh3 manages it via link_rel='noopener noreferrer'.
+  attrs: dict[str, set[str]] = {
+    'a': {'href', 'title', 'aria-current'},
+    'img': {'src', 'alt', 'title', 'width', 'height'},
   }
   for tag in _ALLOWED_CLASS_TAGS:
-    attrs.setdefault(tag, []).append('class')
+    attrs.setdefault(tag, set()).add('class')
   for tag in _ALLOWED_ID_TAGS:
-    attrs.setdefault(tag, []).append('id')
+    attrs.setdefault(tag, set()).add('id')
   return attrs
 
 
 _ALLOWED_ATTRS = _build_allowed_attrs()
-_MD_LOCAL = threading.local()
+_MD_INSTANCE: Optional[markdown.Markdown] = None
 
 
 def _get_markdown_instance() -> markdown.Markdown:
-  """Return a reusable thread-local Markdown instance, resetting state before each conversion."""
-  md = getattr(_MD_LOCAL, "instance", None)
-  if md is None:
+  """Return a reusable Markdown instance, resetting state before each conversion."""
+  global _MD_INSTANCE  # pylint: disable=global-statement
+  if _MD_INSTANCE is None:
     extensions: list[str | markdown.extensions.Extension] = [
-      MetaExtension(),
       TocExtension(permalink=True, toc_depth="2-4"),
       FencedCodeExtension(),
-      CodeHiliteExtension(css_class="highlight", guess_lang=True, noclasses=False),
+      CodeHiliteExtension(css_class="highlight", guess_lang=False, noclasses=False),
       TableExtension(),
       FootnoteExtension(),
       AttrListExtension(),
@@ -117,11 +114,10 @@ def _get_markdown_instance() -> markdown.Markdown:
       "markdown.extensions.sane_lists",
       "markdown.extensions.smarty",
     ]
-    md = markdown.Markdown(extensions=extensions, output_format="html")
-    _MD_LOCAL.instance = md
+    _MD_INSTANCE = markdown.Markdown(extensions=extensions, output_format="html")
   else:
-    md.reset()
-  return md
+    _MD_INSTANCE.reset()
+  return _MD_INSTANCE
 
 def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
             nav_pages: Optional[list] = None,
@@ -152,7 +148,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   tag names in the tag strip become clickable links.
   base_url and output_root are used to compute sitemap_link and
   search_json_url template variables.
-  sanitize=True will clean the generated HTML using bleach if available.
+  sanitize=True will clean the generated HTML using nh3 if available.
   recent_posts is an optional list of (out_html, title) tuples for the nav.
   front_matter and body, if provided, avoids reading/parsing md_path again.
   """
@@ -196,25 +192,22 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
     fm_refresh = 0
   refresh_meta = Markup(f'<meta http-equiv="refresh" content="{fm_refresh}" />\n  ') if fm_refresh > 0 else "" # type: ignore
 
-  if sanitize and not _BLEACH_AVAILABLE:
-    print("Warning: sanitization requested but 'bleach' is not installed. HTML will NOT be sanitized.", file=sys.stderr)
-    print("To fix, run: pip install bleach tinycss2", file=sys.stderr)
+  if sanitize and not _NH3_AVAILABLE:
+    print("Warning: sanitization requested but 'nh3' is not installed. HTML will NOT be sanitized.", file=sys.stderr)
+    print("To fix, run: pip install nh3", file=sys.stderr)
 
   md = _get_markdown_instance()
   content_html = md.convert(body)
 
   # ── Sanitization ────────────────────────────────────────────────────────
-  def _clean_if_needed(html_str: str) -> str:
-    if sanitize and _BLEACH_AVAILABLE:
-      return bleach.clean(
-        html_str,
-        tags=_ALLOWED_TAGS,
-        attributes=_ALLOWED_ATTRS,
-        css_sanitizer=_CSS_SANITIZER,
-      )
-    return html_str
-
-  content_html = _clean_if_needed(content_html)
+  if sanitize and _NH3_AVAILABLE:
+    content_html = nh3.clean(
+      content_html,
+      tags=_ALLOWED_TAGS,
+      attributes=_ALLOWED_ATTRS,
+      url_schemes=_ALLOWED_URL_SCHEMES,
+      link_rel="noopener noreferrer",
+    )
 
   # Build structured tags for templates
   page_tags = []
@@ -238,7 +231,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   last_updated = mtime.strftime("%H:%M %m/%d/%Y").replace(" ", " &mdash; ", 1)
   source_rel = md_path.name
 
-  sitemap_link = _clean_if_needed(_sitemap_link(out_path, output_root, base_url))
+  sitemap_link = _sitemap_link(out_path, output_root, base_url)
 
   if search_enabled:
     search_url = _search_json_url(out_path, output_root, base_url)
@@ -250,7 +243,7 @@ def convert_md_to_html(md_path: Path, out_path: Path, site_name: str,
   # 2. If page title matches site_name, show only site_name
   # 3. Otherwise, use "Site Name - Page Title"
   if resolved_root_index is not None:
-    is_root_index = out_path.resolve() == resolved_root_index
+    is_root_index = out_path == resolved_root_index
   else:
     is_root_index = bool(
       output_root and out_path.resolve() == (output_root / "index.html").resolve()

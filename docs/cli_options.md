@@ -37,7 +37,7 @@
 # Only rebuild pages that changed since last build
 ./hanma.py --incremental
 
-# Sanitize generated HTML using bleach (optional)
+# Sanitize generated HTML using nh3 (optional)
 ./hanma.py --sanitize
 
 # Generate sitemap.xml, feed.xml, and canonical links
@@ -90,7 +90,7 @@
 | `--theme NAME` | `default` | Theme to use from the `themes/` directory |
 | `--dry-run` | — | List matched files without writing HTML |
 | `--incremental` | — | Only rebuild pages whose source, theme template, or config file has changed since the last build |
-| `--sanitize` | — | Sanitize the generated HTML using `bleach` to prevent XSS (requires `bleach` package) |
+| `--sanitize` | — | Sanitize the generated HTML using `nh3` to prevent XSS (requires `nh3` package) |
 | `--timezone ZONE` | `UTC` | Timezone name for post dates and "last updated" timestamps (e.g., `America/New_York`) |
 | `--serve [PORT]` | — | Start a local HTTP server after generating; optional inline port (`1..65535`) |
 | `--port PORT` | `8000` | Port for the local HTTP server (`1..65535`, alternative to `--serve PORT`) |

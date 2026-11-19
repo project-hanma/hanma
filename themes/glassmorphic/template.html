@@ -160,15 +160,8 @@
 
 <!-- JS Scripts -->
 <script src="{{ root_rel }}assets/scripts/theme-toggle.js"></script>
+<script src="{{ root_rel }}assets/scripts/mobile-menu.js"></script>
 {% if search_json_url %}<script src="{{ root_rel }}assets/scripts/search.js"></script>{% endif %}
-<script>
-  // Mobile menu interactive logic
-  document.getElementById('mobileMenuToggle').addEventListener('click', function() {
-    var expanded = this.getAttribute('aria-expanded') === 'true';
-    this.setAttribute('aria-expanded', !expanded);
-    document.querySelector('.glass-sidebar').classList.toggle('mobile-open');
-  });
-</script>
 
 </body>
 </html>

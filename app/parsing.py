@@ -29,12 +29,11 @@ except ImportError:
   # Hanma requires 3.10+, where zoneinfo is built-in.
   ZoneInfo = None  # type: ignore
 
-try:
-  import yaml
-except ImportError as exc:
-  raise RuntimeError(
-    "Required package 'pyyaml' not found. Install it with:  pip install pyyaml"
-  ) from exc
+from app.utils import YAMLError, safe_load_yaml
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_MD_INLINE_RE = re.compile(r"[*_`\[\]()!]")
 
 
 def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tuple:
@@ -61,8 +60,8 @@ def parse_front_matter(md_text: str, source_path: Optional[Path] = None) -> tupl
       yaml_block = "\n".join(lines[1:i])
       body = "\n".join(lines[i + 1:])
       try:
-        meta = yaml.safe_load(yaml_block) or {}
-      except yaml.YAMLError as exc:
+        meta = safe_load_yaml(yaml_block) or {}
+      except YAMLError as exc:
         loc = f" in {source_path}" if source_path else ""
         print(f"Warning: malformed YAML front matter{loc} — metadata ignored", file=sys.stderr)
         print("  Hint: if a value contains a colon, wrap it in quotes — e.g. title: \"My Title: Subtitle\"", file=sys.stderr)
@@ -79,19 +78,28 @@ def extract_title(md_text: str, fallback: str) -> str:
   for line in md_text.splitlines():
     stripped = line.strip()
     if stripped.startswith("# "):
-      return stripped[2:].strip()
+      no_scripts = _SCRIPT_STYLE_RE.sub("", stripped[2:])
+      clean = _HTML_TAG_RE.sub("", no_scripts).strip()
+      if clean:
+        return clean
   return fallback
 
 
 def extract_description(md_text: str, max_chars: int = 160) -> str:
   """Return the first non-heading paragraph as a plain-text description."""
-  for line in md_text.splitlines():
+  sanitized_md = _SCRIPT_STYLE_RE.sub("", md_text)
+  in_fence = False
+  for line in sanitized_md.splitlines():
     stripped = line.strip()
-    if stripped and not stripped.startswith("#") and not stripped.startswith("```"):
-      # Strip inline script/style blocks, HTML tags, and inline markdown
-      no_scripts = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", "", stripped, flags=re.IGNORECASE)
-      no_tags = re.sub(r"<[^>]+>", "", no_scripts)
-      plain = re.sub(r"[*_`\[\]()!]", "", no_tags).strip()
+    if stripped.startswith("```") or stripped.startswith("~~~"):
+      in_fence = not in_fence
+      continue
+    if in_fence:
+      continue
+    if stripped and not stripped.startswith("#"):
+      # Strip inline HTML tags and inline markdown
+      no_tags = _HTML_TAG_RE.sub("", stripped)
+      plain = _MD_INLINE_RE.sub("", no_tags).strip()
       if plain:
         return plain[:max_chars]
   return ""
