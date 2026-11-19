@@ -1,6 +1,5 @@
 -r requirements.txt
 pytest==9.0.2
-types-bleach
 types-Markdown
 types-PyYAML
 types-Jinja2

@@ -32,4 +32,4 @@ Use this skill when modifying the core Python code of the Hanma SSG (located in 
    - Use emojis (e.g., 🏯, 🏗️, 🛠️, ✅) for section headers ONLY. Do NOT place emojis at the end of individual bullet points.
 5. **Security**:
    - Validate file paths to prevent traversal/symlink attacks.
-   - Sanitize all HTML inputs (using `bleach` if enabled).
+   - Sanitize all HTML inputs (using `nh3` if enabled).

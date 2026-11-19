@@ -13,10 +13,10 @@
 
   function syncButton(theme) {
     if (theme === "dark") {
-      icon.innerHTML = "☀️";
+      icon.textContent = "☀️";
       lbl.textContent = "Light";
     } else {
-      icon.innerHTML = "🌙";
+      icon.textContent = "🌙";
       lbl.textContent = "Dark";
     }
   }
@@ -27,7 +27,7 @@
   btn.addEventListener("click", function () {
     var next = currentTheme() === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try { localStorage.setItem(STORAGE_KEY, next); } catch (e) {}
     syncButton(next);
   });
 })();

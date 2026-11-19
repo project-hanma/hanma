@@ -20,7 +20,7 @@ import stat
 import sys
 from pathlib import Path
 
-from app.utils import sync_file_if_changed
+from app.utils import iter_safe_files, prune_stale_files, sync_file_if_changed
 
 POSTS_DIR_NAME = "posts"
 
@@ -69,33 +69,13 @@ def copy_static_assets(source_root: Path, output_root: Path) -> None:
   static_dest.mkdir(parents=True, exist_ok=True)
 
   expected_dest_files: set[Path] = set()
-  for src_file in static_src.rglob("*"):
-    try:
-      if not src_file.resolve().is_relative_to(resolved_root):
-        continue
-    except OSError:
-      continue
-    if not src_file.is_file():
-      continue
+  for src_file, st in iter_safe_files(static_src, resolved_root):
     rel = src_file.relative_to(static_src)
     dest_file = static_dest / rel
     expected_dest_files.add(dest_file)
-    sync_file_if_changed(src_file, dest_file)
+    sync_file_if_changed(src_file, dest_file, src_stat=st)
 
-  # Prune stale files in static_dest that no longer exist in static_src
-  for dest_file in sorted(static_dest.rglob("*")):
-    if dest_file.is_file() and dest_file not in expected_dest_files:
-      try:
-        dest_file.unlink()
-        parent = dest_file.parent
-        while parent != static_dest:
-          try:
-            parent.rmdir()
-            parent = parent.parent
-          except OSError:
-            break
-      except OSError:
-        pass
+  prune_stale_files(static_dest, expected_dest_files)
 
   print(f"  [static] copied {len(expected_dest_files)} file(s) from static/")
 

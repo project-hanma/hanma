@@ -47,7 +47,8 @@ def _sitemap_link(out_path: Path, output_root: Optional[Path], base_url: str) ->
   if output_root is None:
     return '<a href="sitemap.xml">Sitemap</a>'
   rel = _rel_url(output_root / "sitemap.xml", out_path.parent)
-  return f'<a href="{rel}">Sitemap</a>'
+  safe_rel = html.escape(rel, quote=True)
+  return f'<a href="{safe_rel}">Sitemap</a>'
 
 
 def _search_json_url(out_path: Path, output_root: Optional[Path], base_url: str) -> str:

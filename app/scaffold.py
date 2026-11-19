@@ -188,7 +188,7 @@ def init_scaffold(site_dir: Path, force: bool = False) -> None:
         "Re-run with --force to wipe it and create fresh sample content."
       )
     for item in real_contents:
-      if item.is_dir():
+      if item.is_dir() and not item.is_symlink():
         shutil.rmtree(item)
       else:
         item.unlink()

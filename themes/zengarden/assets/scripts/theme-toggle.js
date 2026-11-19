@@ -13,10 +13,10 @@
 
   function syncButton(theme) {
     if (theme === "dark") {
-      icon.innerHTML = "&#9728;"; // sun symbol
+      icon.textContent = "\u2600";
       lbl.textContent = "Light";
     } else {
-      icon.innerHTML = "&#9790;"; // moon symbol
+      icon.textContent = "\u263E";
       lbl.textContent = "Dark";
     }
   }
@@ -26,7 +26,7 @@
   btn.addEventListener("click", function () {
     var next = currentTheme() === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try { localStorage.setItem(STORAGE_KEY, next); } catch (e) {}
     syncButton(next);
   });
 })();
