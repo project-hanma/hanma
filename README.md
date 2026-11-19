@@ -41,7 +41,7 @@ Hanma requires Python 3.10+. Install the core dependencies (including optional s
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
-pip install markdown pygments pyyaml jinja2 watchdog bleach tinycss2 html5lib
+pip install markdown pygments pyyaml jinja2 watchdog nh3
 ```
 
 ## Setup

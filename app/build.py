@@ -15,7 +15,6 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Site building and orchestration logic for Hanma."""
-from concurrent.futures import ThreadPoolExecutor
 import sys
 from datetime import datetime, date, timezone as dt_timezone
 from pathlib import Path
@@ -39,8 +38,6 @@ from app.sidecar import build_sitemap_xml, build_search_json, build_rss_xml
 from app.highlight import _build_highlight_css
 from app.theme import copy_theme_assets, _load_theme_impl, _CSS_SUBDIR
 from app.utils import BuildContext, write_text_if_changed
-
-_PARALLEL_THRESHOLD = 20
 
 
 def _process_page_worker(md_path: Path, out_html: Path, nav_pages: list,
@@ -118,23 +115,40 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path,
       and cached.get("tz") == tz_key
     )
 
+    loaded_from_cache = False
     if cache_hit and cached is not None:
-      new_meta_cache[key] = cached
       if cached.get("draft") is True:
+        new_meta_cache[key] = cached
         print(f"  [draft] skipping {md_path.name}")
         drafts += 1
         continue
-      out_html = Path(cached["out_html"])
-      title = cached["title"]
-      description = cached["description"]
-      layout = cached["layout"]
-      sort_index = cached["sort_index"]
-      front: Optional[dict] = {"link": cached["link"]} if cached.get("link") is not None else {}
-      body: Optional[str] = None
-      md_hash = cached["hash"]
-      fm_tags = cached.get("tags", [])
-      date_dt = datetime.fromisoformat(cached["date_iso"])
-    else:
+      try:
+        cached_hash = cached["hash"]
+        if not isinstance(cached_hash, str) or len(cached_hash) != 64:
+          raise ValueError("Invalid cached hash")
+        rel = md_path.relative_to(root)
+        out_html = output_dir / rel.with_suffix(".html")
+        title = str(cached["title"])
+        description = str(cached["description"])
+        layout = str(cached["layout"])
+        sort_index = cached["sort_index"]
+        if sort_index is not None and not isinstance(sort_index, int):
+          raise ValueError("Invalid cached sort_index")
+        link_cached = cached.get("link")
+        front: Optional[dict] = {"link": link_cached} if isinstance(link_cached, dict) else {}
+        body: Optional[str] = None
+        md_hash = cached_hash
+        raw_cached_tags = cached.get("tags", [])
+        if not isinstance(raw_cached_tags, list):
+          raise ValueError("Invalid cached tags")
+        fm_tags = [str(t) for t in raw_cached_tags]
+        date_dt = datetime.fromisoformat(cached["date_iso"])
+        new_meta_cache[key] = cached
+        loaded_from_cache = True
+      except (KeyError, TypeError, ValueError):
+        loaded_from_cache = False
+
+    if not loaded_from_cache:
       md_text = md_path.read_text(encoding="utf-8")
       md_hash = compute_text_hash(md_text)
       front, body = parse_front_matter(md_text, source_path=md_path)
@@ -188,7 +202,6 @@ def _collect_all_pages(files: list[Path], root: Path, output_dir: Path,
           "tz": tz_key,
           "draft": False,
           "hash": md_hash,
-          "out_html": str(out_html),
           "title": title,
           "description": description,
           "layout": layout,
@@ -344,7 +357,9 @@ def _generate_tag_indices(tags_map: dict, tag_out_paths: dict,
 
 
 def _prepare_output(output_dir: Path, theme_dir: Path, root: Path,
-                    expected_html: set[Path]) -> list[Path]:
+                    expected_html: set[Path],
+                    base_url: str = "",
+                    search_enabled: bool = True) -> list[Path]:
   """Prepare output directory: create, copy assets, and clean stale files."""
   output_dir.mkdir(parents=True, exist_ok=True)
   copy_theme_assets(theme_dir, output_dir)
@@ -360,6 +375,19 @@ def _prepare_output(output_dir: Path, theme_dir: Path, root: Path,
       except ValueError:
         rel = path
       print(f"  [clean] removed stale {rel}")
+    stale_sidecars: list[Path] = []
+    if not base_url:
+      stale_sidecars.extend([output_dir / "sitemap.xml", output_dir / "feed.xml"])
+    if not search_enabled:
+      stale_sidecars.append(output_dir / "search.json")
+    for sidecar_path in stale_sidecars:
+      if sidecar_path.is_file():
+        try:
+          sidecar_path.unlink()
+          stale.append(sidecar_path)
+          print(f"  [clean] removed stale {sidecar_path.name}")
+        except OSError as exc:
+          print(f"  [clean] warning: could not remove {sidecar_path}: {exc}", file=sys.stderr)
   return stale
 
 
@@ -524,6 +552,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
        sidebar_side: str = "right") -> tuple[int, int, int]:
   """Run a full site build."""
 
+  output_dir = output_dir.resolve()
   manifest, template_mtime, config_mtime = _init_manifest(incremental, manifest_path, theme_dir, config_path)
 
   files = find_markdown_files(root)
@@ -542,7 +571,10 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
 
   stale_removed: list[Path] = []
   if not dry_run:
-    stale_removed = _prepare_output(output_dir, theme_dir, root, expected_html)
+    stale_removed = _prepare_output(
+      output_dir, theme_dir, root, expected_html,
+      base_url=base_url, search_enabled=search_enabled,
+    )
 
   errors = 0
   recent_posts = [
@@ -551,7 +583,8 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   ] if dated_pages else []
 
   nav_sig = compute_nav_signature(
-    nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts
+    nav_pages, posts_out=nav_posts_out, recent_posts=recent_posts,
+    posts_label=posts_label,
   ) if (nav_pages or nav_posts_out) else ""
 
   ctx = BuildContext(
@@ -566,7 +599,7 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     search_enabled=search_enabled,
     sidebar_side=sidebar_side,
     template=template,
-    resolved_root_index=(output_dir / "index.html").resolve(),
+    resolved_root_index=output_dir / "index.html",
   )
 
   tasks, ok, skipped = _prepare_tasks(
@@ -576,46 +609,45 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
   )
 
   if tasks:
-    if len(tasks) >= _PARALLEL_THRESHOLD:
-      with ThreadPoolExecutor() as pool:
-        futures = [
-          (pool.submit(fn, *args), rel, md_hash, md_path)
-          for fn, args, rel, md_hash, md_path in tasks
-        ]
-        for fut, rel, md_hash, md_path in futures:
-          try:
-            out = fut.result()
-            print(f"  ✓  {rel}  →  {out}")
-            ok += 1
-            if incremental and manifest_path is not None:
-              manifest[str(md_path)] = md_hash
-          except Exception as exc:  # pylint: disable=broad-exception-caught
-            print(f"  ✗  {rel}  →  ERROR: {exc}")
-            errors += 1
-    else:
-      for fn, args, rel, md_hash, md_path in tasks:
-        try:
-          out = fn(*args)
-          print(f"  ✓  {rel}  →  {out}")
-          ok += 1
-          if incremental and manifest_path is not None:
-            manifest[str(md_path)] = md_hash
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-          print(f"  ✗  {rel}  →  ERROR: {exc}")
-          errors += 1
+    for fn, args, rel, md_hash, md_path in tasks:
+      try:
+        out = fn(*args)
+        print(f"  ✓  {rel}  →  {out}")
+        ok += 1
+        if incremental and manifest_path is not None:
+          manifest[str(md_path)] = md_hash
+      except Exception as exc:  # pylint: disable=broad-exception-caught
+        print(f"  ✗  {rel}  →  ERROR: {exc}")
+        errors += 1
 
   if dry_run:
     _print_dry_run_auxiliary(tags_map, tag_out_paths, has_posts_listing, posts_out_path)
     return ok, errors, skipped
 
   # ── Generate tag indices, posts listing, and sidecar files ─────────────
+  lastmod_dates: Optional[list[tuple[str, str]]] = None
+  if base_url:
+    lastmod_dates = []
+    for entry in all_files:
+      md_path, out_html = entry[0], entry[1]
+      md_mtime = entry[8] if len(entry) > 8 else 0.0
+      if md_mtime > 0.0:
+        d_str = datetime.fromtimestamp(md_mtime).strftime("%Y-%m-%d")
+      else:
+        d_str = datetime.now().strftime("%Y-%m-%d")
+      lastmod_dates.append((str(out_html), d_str))
+
   aux_sig = compute_aux_signature(
     tags_map, dated_pages, search_entries, base_url,
     posts_label, search_enabled, site_name, sidebar_side,
+    nav_sig=nav_sig, timezone=timezone, lastmod_dates=lastmod_dates,
   )
   aux_up_to_date = (
     incremental
     and not stale_removed
+    and template_mtime <= manifest.get(_MANIFEST_TEMPLATE_KEY, 0.0)
+    and config_mtime <= manifest.get(_MANIFEST_CONFIG_KEY, 0.0)
+    and (not nav_sig or manifest.get(_MANIFEST_NAV_KEY) == nav_sig)
     and manifest.get(_MANIFEST_AUX_KEY) == aux_sig
     and all(p.exists() for p in expected_html)
   )
@@ -627,11 +659,16 @@ def _run_build(root: Path, output_dir: Path, site_name: str,
     )
 
   if incremental and manifest_path is not None:
-    manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
-    manifest[_MANIFEST_CONFIG_KEY] = config_mtime
-    manifest[_MANIFEST_NAV_KEY] = nav_sig
-    manifest[_MANIFEST_AUX_KEY] = aux_sig
-    save_build_manifest(manifest_path, manifest)
+    active_keys = {str(entry[0]) for entry in all_files}
+    pruned_manifest: dict = {
+      k: v for k, v in manifest.items()
+      if k in active_keys or k.startswith("_")
+    }
+    pruned_manifest[_MANIFEST_TEMPLATE_KEY] = template_mtime
+    pruned_manifest[_MANIFEST_CONFIG_KEY] = config_mtime
+    pruned_manifest[_MANIFEST_NAV_KEY] = nav_sig
+    pruned_manifest[_MANIFEST_AUX_KEY] = aux_sig
+    save_build_manifest(manifest_path, pruned_manifest)
 
   if not dry_run:
     draft_note = f", {drafts} draft(s) skipped" if drafts else ""

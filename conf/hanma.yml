@@ -39,7 +39,7 @@ theme: default
 # Enable search functionality and show the search box.
 search: true
 
-# Sanitize the generated HTML using 'bleach' if available.
+# Sanitize the generated HTML using 'nh3' if available.
 # sanitize: false
 
 # Label for the posts listing link in the navigation bar.

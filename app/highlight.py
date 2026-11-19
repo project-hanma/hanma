@@ -27,10 +27,12 @@ def _build_highlight_css() -> str:
   except ImportError:
     return ""  # Pygments not installed — highlighting still works, just unstyled
 
-  def scoped(style: str, scope: str) -> str:
+  def raw_defs(style: str) -> str:
     raw = HtmlFormatter(style=style, cssclass="highlight").get_style_defs(".highlight")
     # Drop the bare `pre { ... }` rule Pygments adds — our template already styles pre
-    raw = re.sub(r"^pre\s*\{[^}]*\}\s*", "", raw, flags=re.MULTILINE)
+    return re.sub(r"^pre\s*\{[^}]*\}\s*", "", raw, flags=re.MULTILINE)
+
+  def scope_raw(raw: str, scope: str) -> str:
     out = []
     for line in raw.splitlines():
       line = line.strip()
@@ -43,9 +45,11 @@ def _build_highlight_css() -> str:
         out.append(line)
     return "\n".join(out)
 
-  light   = scoped("friendly", ":root")
-  dark    = scoped("monokai",  '[data-theme="dark"]')
-  os_dark = scoped("monokai",  ':root:not([data-theme="light"])')
+  friendly_raw = raw_defs("friendly")
+  monokai_raw = raw_defs("monokai")
+  light   = scope_raw(friendly_raw, ":root")
+  dark    = scope_raw(monokai_raw, '[data-theme="dark"]')
+  os_dark = scope_raw(monokai_raw, ':root:not([data-theme="light"])')
 
   return f"""
   /* Syntax highlighting — light (Pygments 'friendly') */

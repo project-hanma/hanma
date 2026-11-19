@@ -15,6 +15,10 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 """Theme loading and asset management for Hanma."""
+import os
+import stat
+from pathlib import Path
+
 try:
   import jinja2
 except ImportError as exc:
@@ -22,9 +26,8 @@ except ImportError as exc:
     "Required package 'Jinja2' not found. "
     "Install it with:  pip install Jinja2"
   ) from exc
-from pathlib import Path
 
-from app.utils import sync_file_if_changed
+from app.utils import iter_safe_files, prune_stale_files, sync_file_if_changed
 
 
 class ThemeError(ValueError):
@@ -59,18 +62,14 @@ def _load_theme_impl(name: str, themes_dir: Path) -> tuple:
 _CSS_SUBDIR = Path("assets") / "css"
 
 
-def _copy_assets_dir(src_assets_dir: Path, output_root: Path, resolved_theme_dir: Path) -> None:
-  for child in src_assets_dir.rglob("*"):
-    try:
-      if not child.resolve().is_relative_to(resolved_theme_dir):
-        continue
-    except OSError:
-      continue
-    if not child.is_file():
-      continue
+def _copy_assets_dir(src_assets_dir: Path, output_root: Path,
+                     resolved_theme_dir: Path, expected_assets: set[Path]) -> None:
+  for child, st in iter_safe_files(src_assets_dir, resolved_theme_dir):
     rel = child.relative_to(src_assets_dir)
     dest = output_root / "assets" / rel
-    sync_file_if_changed(child, dest)
+    expected_assets.add(dest)
+    sync_file_if_changed(child, dest, src_stat=st)
+
 
 def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
   """Copy all non-template files from theme_dir into output_root/assets/.
@@ -79,30 +78,34 @@ def copy_theme_assets(theme_dir: Path, output_root: Path) -> None:
   directly (preserving its internal structure), so that paths like
   assets/css/style.css and assets/scripts/foo.js resolve correctly.
   Loose files (not inside assets/) fall back to output_root/assets/css/.
-  template.html is always skipped.
+  template.html is always skipped. Stale theme assets are pruned (preserving pygments.css).
   """
   resolved_theme_dir = theme_dir.resolve()
   css_dir = output_root / _CSS_SUBDIR
-  for src in theme_dir.iterdir():
-    if src.name == "template.html":
+  assets_root = output_root / "assets"
+  expected_assets: set[Path] = {css_dir / "pygments.css"}
+
+  for entry in os.scandir(theme_dir):
+    if entry.name == "template.html":
       continue
+    src = Path(entry.path)
     try:
       if not src.resolve().is_relative_to(resolved_theme_dir):
         continue
+      st = entry.stat(follow_symlinks=True)
     except OSError:
       continue
-    if src.is_dir() and src.name == "assets":
-      _copy_assets_dir(src, output_root, resolved_theme_dir)
+    if stat.S_ISDIR(st.st_mode) and entry.name == "assets":
+      _copy_assets_dir(src, output_root, resolved_theme_dir, expected_assets)
       continue
-    dest = css_dir / src.name
-    if src.is_file():
-      sync_file_if_changed(src, dest)
-    elif src.is_dir():
-      for child in src.rglob("*"):
-        try:
-          if not child.resolve().is_relative_to(resolved_theme_dir):
-            continue
-        except OSError:
-          continue
-        if child.is_file():
-          sync_file_if_changed(child, dest / child.relative_to(src))
+    dest = css_dir / entry.name
+    if stat.S_ISREG(st.st_mode):
+      expected_assets.add(dest)
+      sync_file_if_changed(src, dest, src_stat=st)
+    elif stat.S_ISDIR(st.st_mode):
+      for child, child_st in iter_safe_files(src, resolved_theme_dir):
+        child_dest = dest / child.relative_to(src)
+        expected_assets.add(child_dest)
+        sync_file_if_changed(child, child_dest, src_stat=child_st)
+
+  prune_stale_files(assets_root, expected_assets)

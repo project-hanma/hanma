@@ -39,6 +39,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
   sys.path.insert(0, str(_PROJECT_ROOT))
 import app as hanma
+from app.cli import _create_parser, _get_effective_settings
 
 SSG = Path(__file__).parent.parent / "hanma.py"
 
@@ -110,6 +111,9 @@ class TestExtractTitle:
     result = hanma.extract_title("## Section\nText.", "fallback")
     assert result == "fallback"
 
+  def test_strips_html_and_script_tags(self):
+    assert hanma.extract_title("# <script>alert(1)</script><b>Clean</b> Title\n", "Fallback") == "Clean Title"
+
 
 class TestExtractDescription:
   def test_first_paragraph_used(self):
@@ -129,6 +133,16 @@ class TestExtractDescription:
 
   def test_empty_file_returns_empty(self):
     assert hanma.extract_description("") == ""
+
+  def test_strips_html_scripts_and_skips_fences(self):
+    md = (
+      "# Heading\n\n"
+      "<script>\nwindow.evil = true;\n</script>\n"
+      "```python\nnot_a_description = 1\n```\n"
+      "~~~bash\nalso_not_description\n~~~\n"
+      '<div class="lead">Clean <b>text</b> here.</div>\n'
+    )
+    assert hanma.extract_description(md) == "Clean text here."
 
 
 # ===========================================================================
@@ -297,6 +311,13 @@ class TestCLIInPlace:
     combined = result.stdout + result.stderr
     assert "not a file or directory" in combined.lower() or "error" in combined.lower()
 
+  def test_single_file_preserves_embedded_md_extension(self, tmp_path):
+    multi_dot = write_file(tmp_path / "notes.md.draft.md", "# Draft\n\nBody")
+    out_single = tmp_path / "out_single"
+    run_hanma(str(multi_dot), "--output", str(out_single))
+    assert (out_single / "notes.md.draft.html").is_file()
+    assert not (out_single / "notes.html.draft.html").exists()
+
 
 # ===========================================================================
 # 7. CLI — --output flag
@@ -377,6 +398,25 @@ class TestCLIOutput:
     (src_dir / "page1.md").unlink()
     run_hanma(str(src_dir), "--output", str(out_dir))
     assert not (out_dir / "page1.html").exists()
+
+  def test_prunes_disabled_sidecar_files(self, tmp_path):
+    site_dir = tmp_path / "site"
+    out_site = tmp_path / "out_site"
+    write_file(site_dir / "index.md", "# Home\n\nBody.")
+    tpl, tdir = hanma.load_theme("default")
+    hanma._run_build(
+      site_dir, out_site, "Site", tpl, tdir,
+      base_url="https://example.com", search_enabled=True,
+    )
+    assert (out_site / "sitemap.xml").is_file()
+    assert (out_site / "search.json").is_file()
+
+    hanma._run_build(
+      site_dir, out_site, "Site", tpl, tdir,
+      base_url="", search_enabled=False,
+    )
+    assert not (out_site / "sitemap.xml").exists()
+    assert not (out_site / "search.json").exists()
 
 
 # ===========================================================================
@@ -506,6 +546,16 @@ class TestNavigation:
     html = (out_dir / "index.html").read_text()
     # zzz (sort_index:1) should appear before aaa (no sort_index) in dropdown
     assert html.index("zzz.html") < html.index("aaa.html")
+
+  def test_invalid_sort_index_warns_and_falls_back(self, tmp_path, capsys):
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    write_file(site_dir / "bad_sort.md", "---\ntitle: Bad Sort\nsort_index: invalid_int\n---\n# Hello")
+    tpl, tdir = hanma.load_theme("default")
+    _, errors, _ = hanma._run_build(site_dir, out_dir, "Test", tpl, tdir)
+    assert errors == 0
+    assert "Warning: invalid sort_index" in capsys.readouterr().err
+    assert (out_dir / "bad_sort.html").exists()
 
 
 # ===========================================================================
@@ -676,6 +726,17 @@ class TestFrontMatterIntegration:
     html = out.read_text()
     assert "Plain" in html
 
+  def test_refresh_clamping(self, tmp_path):
+    md_high = write_file(tmp_path / "high.md", "---\nrefresh: 999999\n---\n# Test")
+    out_high = tmp_path / "high.html"
+    hanma.convert_md_to_html(md_high, out_high, "Site", nav_pages=[])
+    assert '<meta http-equiv="refresh" content="86400" />' in out_high.read_text(encoding="utf-8")
+
+    md_neg = write_file(tmp_path / "neg.md", "---\nrefresh: -10\n---\n# Test")
+    out_neg = tmp_path / "neg.html"
+    hanma.convert_md_to_html(md_neg, out_neg, "Site", nav_pages=[])
+    assert 'http-equiv="refresh"' not in out_neg.read_text(encoding="utf-8")
+
 
 # ===========================================================================
 # 14. Themes
@@ -733,6 +794,18 @@ class TestThemes:
     theme_dir = hanma._THEMES_DIR / "default"
     hanma.copy_theme_assets(theme_dir, out_dir)
     assert not (out_dir / "assets" / "styles" / "template.html").exists()
+
+  def test_copy_theme_assets_prunes_stale_and_preserves_pygments(self, tmp_path):
+    out_dir = tmp_path / "dist"
+    stale_asset = out_dir / "assets" / "css" / "old_theme.css"
+    pygments_css = out_dir / "assets" / "css" / "pygments.css"
+    stale_asset.parent.mkdir(parents=True)
+    stale_asset.write_text("body{}", encoding="utf-8")
+    pygments_css.write_text(".highlight{}", encoding="utf-8")
+
+    hanma.copy_theme_assets(hanma._THEMES_DIR / "default", out_dir)
+    assert not stale_asset.exists()
+    assert pygments_css.is_file()
 
 
 # ===========================================================================
@@ -799,6 +872,19 @@ class TestPortHandling:
     assert "--port" in result.stdout
     assert "--serve" in result.stdout
 
+  def test_serve_port_overrides_port_flag(self):
+    args = _create_parser().parse_args(["--serve", "9000", "--port", "7000"])
+    settings = _get_effective_settings(args, {})
+    assert settings["effective_serve"] is True
+    assert settings["effective_port"] == 9000
+
+  def test_out_of_bounds_port_exits_nonzero(self, capsys):
+    args = _create_parser().parse_args(["--port", "70000"])
+    with pytest.raises(SystemExit) as exc:
+      _get_effective_settings(args, {})
+    assert exc.value.code == 1
+    assert "Port must be between 1 and 65535" in capsys.readouterr().err
+
 
 # ===========================================================================
 # 17. YAML warning — S5/U2 (malformed front matter emits warning)
@@ -847,6 +933,28 @@ class TestNavRelativeURLs:
     # posts/hello.html should appear in the index.html nav dropdown
     index_html = (out_dir / "index.html").read_text()
     assert "posts/hello.html" in index_html
+
+  def test_get_nav_data_cross_folder_relative_urls(self, tmp_path):
+    from app.nav import get_nav_data
+
+    out_root = tmp_path / "nav_out"
+    home = out_root / "index.html"
+    g_idx = out_root / "guides" / "index.html"
+    g_a = out_root / "guides" / "a.html"
+    d_b = out_root / "docs" / "b.html"
+    nav_pages = [
+      (home, "Home", tmp_path / "index.md", "page", 0, None),
+      (g_idx, "Guides", tmp_path / "guides" / "index.md", "page", 1, None),
+      (g_a, "A", tmp_path / "guides" / "a.md", "page", 2, None),
+      (d_b, "B", tmp_path / "docs" / "b.md", "page", 3, None),
+    ]
+    from_ga = {item["title"]: item for item in get_nav_data(g_a, nav_pages, output_root=out_root)}
+    assert from_ga["Home"]["url"] == "../index.html"
+    assert from_ga["Home"]["is_current"] is False
+    assert from_ga["Guides"]["url"] == "index.html"
+    assert from_ga["Guides"]["children"][0]["url"] == "a.html"
+    assert from_ga["Guides"]["children"][0]["is_current"] is True
+    assert from_ga["Docs"]["children"][0]["url"] == "../docs/b.html"
 
 
 # ===========================================================================
@@ -960,6 +1068,68 @@ class TestTagIndexPages:
     assert "python" in html_text
     assert "My Page" in html_text
 
+  def test_tag_sort_key_mixed_dates(self):
+    from datetime import date, datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    entries = [
+      (Path("undated.html"), "Undated", None),
+      (Path("aware_utc.html"), "Aware UTC 2026", datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)),
+      (Path("naive_2025.html"), "Naive 2025", datetime(2025, 6, 1, 12, 0)),
+      (Path("aware_ny.html"), "Aware NY 2026", datetime(2026, 7, 1, 12, 0, tzinfo=ZoneInfo("America/New_York"))),
+      (Path("str_human.html"), "String Human", "March 15, 2025"),
+      (Path("str_iso.html"), "String ISO", "2024-12-01"),
+      (Path("date_obj.html"), "Date Obj", date(2024, 1, 1)),
+      (Path("malformed.html"), "Malformed", "not-a-valid-date"),
+    ]
+    sorted_titles = [t for _, t, _ in sorted(entries, key=hanma._tag_sort_key, reverse=True)]
+    assert sorted_titles[:6] == [
+      "Aware NY 2026",
+      "Aware UTC 2026",
+      "Naive 2025",
+      "String Human",
+      "String ISO",
+      "Date Obj",
+    ]
+    assert set(sorted_titles[6:]) == {"Undated", "Malformed"}
+
+  def test_tag_sort_key_honors_timezone(self):
+    from datetime import datetime, timezone
+
+    tokyo_naive = (Path("tokyo.html"), "Tokyo Naive", datetime(2025, 1, 1, 2, 0))
+    utc_aware = (Path("utc.html"), "UTC Aware", datetime(2025, 1, 1, 0, 0, tzinfo=timezone.utc))
+    assert hanma._tag_sort_key(utc_aware, tz_name="Asia/Tokyo")[1] > hanma._tag_sort_key(
+      tokyo_naive, tz_name="Asia/Tokyo"
+    )[1]
+
+  def test_tag_index_orders_by_date_merges_slugs_and_skips_empty_slugs(self, tmp_path):
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    write_file(
+      site_dir / "post_z_new.md",
+      "---\ntitle: Newest Post\ndate: 2026-03-01\ntags:\n  - Python\n  - '+++'\n---\n# New",
+    )
+    write_file(
+      site_dir / "post_a_old.md",
+      "---\ntitle: Oldest Post\ndate: 2024-01-01\ntags:\n  - python\n---\n# Old",
+    )
+    mtime_old = write_file(
+      site_dir / "post_m_fallback.md",
+      "---\ntitle: Mtime Fallback Post\ntags:\n  - python\n---\n# Fallback",
+    )
+    os.utime(mtime_old, (946684800, 946684800))  # 2000-01-01 UTC
+
+    tpl, tdir = hanma.load_theme("default")
+    _, errors, _ = hanma._run_build(site_dir, out_dir, "Test", tpl, tdir)
+    assert errors == 0
+
+    tag_file = out_dir / "tags" / "python.html"
+    assert tag_file.exists()
+    assert not (out_dir / "tags" / ".html").exists()
+
+    tag_list = tag_file.read_text(encoding="utf-8").split('<ul class="tag-index">', 1)[1]
+    assert tag_list.index("Newest Post") < tag_list.index("Oldest Post") < tag_list.index("Mtime Fallback Post")
+
 
 # ===========================================================================
 # 22. Sitemap generation
@@ -1000,6 +1170,17 @@ class TestSitemap:
     result = hanma.build_sitemap_xml([], tmp_path, "")
     assert result is None
     assert not (tmp_path / "sitemap.xml").exists()
+
+  def test_sitemap_lastmod_uses_source_mtime(self, tmp_path):
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    md_file = write_file(site_dir / "page.md", "# Historical Page\n\nContent.")
+    os.utime(md_file, (1623758400, 1623758400))  # 2021-06-15 12:00:00 UTC
+
+    tpl, tdir = hanma.load_theme("default")
+    _, errors, _ = hanma._run_build(site_dir, out_dir, "Test", tpl, tdir, base_url="https://example.com")
+    assert errors == 0
+    assert "<lastmod>2021-06-15</lastmod>" in (out_dir / "sitemap.xml").read_text(encoding="utf-8")
 
 
 # ===========================================================================
@@ -1060,6 +1241,7 @@ class TestCanonicalLinks:
     run_hanma(str(tmp_path), "--output", str(out_dir), "--base-url", "https://example.com")
     page = (out_dir / "subdir/page.html").read_text()
     assert '<link rel="canonical" href="https://example.com/subdir/page.html" />' in page
+    assert 'href="../sitemap.xml"' in page
 
   def test_no_canonical_link_without_base_url(self, tmp_path):
     write_file(tmp_path / "index.md", "# Home")
@@ -1200,6 +1382,30 @@ class TestStaticAssets:
     dst = tmp_path / "dst"
     dst.mkdir()
     hanma.copy_static_assets(src, dst)  # should not raise
+
+  def test_differential_sync_preserves_unchanged_and_prunes_deleted(self, tmp_path):
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    static_src = site_dir / "static"
+    static_src.mkdir(parents=True)
+    out_dir.mkdir()
+
+    write_file(static_src / "keep.txt", "keep")
+    f_del = write_file(static_src / "sub" / "delete_me.txt", "delete")
+
+    hanma.copy_static_assets(site_dir, out_dir)
+    dest_keep = out_dir / "static" / "keep.txt"
+    dest_del = out_dir / "static" / "sub" / "delete_me.txt"
+    assert dest_keep.exists()
+    assert dest_del.exists()
+    inode_before = dest_keep.stat().st_ino
+
+    f_del.unlink()
+    hanma.copy_static_assets(site_dir, out_dir)
+    assert dest_keep.exists()
+    assert dest_keep.stat().st_ino == inode_before
+    assert not dest_del.exists()
+    assert not (out_dir / "static" / "sub").exists()
 
 
 # ===========================================================================
@@ -1453,6 +1659,87 @@ class TestIncrementalBuilds:
     result = hanma.load_build_manifest(tmp_path / ".hanma_manifest.json")
     assert result == {}
 
+  def test_page_needs_rebuild_rejects_invalid_hash_length(self):
+    manifest = {"test.md": "too-short"}
+    assert hanma.page_needs_rebuild(
+      Path("test.md"), Path("test.html"), manifest, template_mtime=0, md_hash="a" * 64,
+    ) is True
+
+    manifest = {"test.md": "a" * 64}
+    from unittest.mock import patch
+    with patch("app.manifest.Path.exists", return_value=True):
+      assert hanma.page_needs_rebuild(
+        Path("test.md"), Path("test.html"), manifest, template_mtime=0, md_hash="a" * 64,
+      ) is False
+
+  def test_write_text_if_changed_skips_identical_writes(self, tmp_path):
+    from app.utils import write_text_if_changed
+
+    target = tmp_path / "sample.html"
+    assert write_text_if_changed(target, "hello") is True
+    ino_before = target.stat().st_ino
+    assert write_text_if_changed(target, "hello") is False
+    assert target.stat().st_ino == ino_before
+    assert write_text_if_changed(target, "updated") is True
+    assert target.read_text(encoding="utf-8") == "updated"
+
+  def test_incremental_aux_caching_invalidation_and_manifest_pruning(self, tmp_path):
+    import json
+
+    themes_root = tmp_path / "themes"
+    custom_theme = themes_root / "custom"
+    custom_theme.mkdir(parents=True)
+    tpl_path = custom_theme / "template.html"
+    tpl_path.write_text("<html><body data-v='1'>{{ content | safe }}</body></html>", encoding="utf-8")
+
+    site_dir = tmp_path / "site"
+    out_dir = tmp_path / "out"
+    manifest_path = out_dir / ".hanma_manifest.json"
+    write_file(site_dir / "index.md", "---\ntitle: Home\nsort_index: 1\n---\n# Home")
+    write_file(site_dir / "about.md", "---\ndescription: Fixed\n---\n# About\n\nInitial body.")
+    p_del = write_file(site_dir / "temp.md", "---\ntitle: Temp\nsort_index: 2\n---\n# Temp")
+    write_file(site_dir / "posts" / "p1.md", "---\ntitle: P1\ndate: 2026-01-01\ntags: [tech]\n---\nBody.")
+
+    tpl, tdir = hanma._load_theme_impl("custom", themes_root)
+    ok1, err1, skip1 = hanma._run_build(
+      site_dir, out_dir, "Test", tpl, tdir,
+      incremental=True, manifest_path=manifest_path,
+    )
+    assert (ok1, err1, skip1) == (4, 0, 0)
+    tag_ino = (out_dir / "tags" / "tech.html").stat().st_ino
+    assert "data-v='1'" in (out_dir / "tags" / "tech.html").read_text(encoding="utf-8")
+
+    # 1. Body-only edit to about.md -> unchanged pages skipped and aux cached
+    write_file(site_dir / "about.md", "---\ndescription: Fixed\n---\n# About\n\nUpdated body text.")
+    ok2, err2, skip2 = hanma._run_build(
+      site_dir, out_dir, "Test", tpl, tdir,
+      incremental=True, manifest_path=manifest_path,
+    )
+    assert err2 == 0
+    assert skip2 == 3
+    assert ok2 == 4
+    assert (out_dir / "tags" / "tech.html").stat().st_ino == tag_ino
+
+    # 2. Update template.html and bump mtime -> auxiliary pages rebuild
+    tpl_path.write_text("<html><body data-v='2'>{{ content | safe }}</body></html>", encoding="utf-8")
+    os.utime(tpl_path, (tpl_path.stat().st_atime + 2, tpl_path.stat().st_mtime + 2))
+    tpl2, _ = hanma._load_theme_impl("custom", themes_root)
+    hanma._run_build(
+      site_dir, out_dir, "Test", tpl2, tdir,
+      incremental=True, manifest_path=manifest_path,
+    )
+    assert "data-v='2'" in (out_dir / "tags" / "tech.html").read_text(encoding="utf-8")
+    assert "data-v='2'" in (out_dir / "posts" / "index.html").read_text(encoding="utf-8")
+
+    # 3. Delete temp.md -> deleted key pruned from manifest
+    p_del.unlink()
+    hanma._run_build(
+      site_dir, out_dir, "Test", tpl2, tdir,
+      incremental=True, manifest_path=manifest_path,
+    )
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert str(p_del) not in manifest_data
+
 
 # ===========================================================================
 # 28. inotify/watchdog-based watch (unit-level checks)
@@ -1472,12 +1759,21 @@ class TestWatchdogWatch:
 
   @watchdog_available
   def test_hanma_event_handler_relevance(self, tmp_path):
-    handler = hanma._HanmaEventHandler(lambda: None, tmp_path, tmp_path)
-    assert handler._is_relevant("file.md") is True
-    assert handler._is_relevant("file.html") is False  # output files must not trigger rebuild
-    assert handler._is_relevant("file.yaml") is True
-    assert handler._is_relevant("file.png") is False
-    assert handler._is_relevant("file.txt") is False
+    src_dir = tmp_path / "site"
+    theme_dir = tmp_path / "themes" / "custom"
+    out_dir = tmp_path / "output"
+    src_dir.mkdir()
+    theme_dir.mkdir(parents=True)
+    out_dir.mkdir()
+
+    handler = hanma._HanmaEventHandler(lambda: None, src_dir, theme_dir, output_dir=out_dir)
+    assert handler._is_relevant(str(src_dir / "file.md")) is True
+    assert handler._is_relevant(str(src_dir / "file.yaml")) is True
+    assert handler._is_relevant(str(theme_dir / "template.html")) is True
+    assert handler._is_relevant(str(src_dir / "page.html")) is False
+    assert handler._is_relevant(str(out_dir / "index.html")) is False
+    assert handler._is_relevant(str(src_dir / "file.png")) is False
+    assert handler._is_relevant(str(src_dir / "note.txt")) is False
 
   @watchdog_available
   def test_hanma_event_handler_ignores_open_close_events(self, tmp_path):
@@ -1544,6 +1840,18 @@ class TestBuildManifest:
 
     sig_different_posts = compute_nav_signature(nav, posts_out=Path("other/index.html"))
     assert sig_with_posts != sig_different_posts, "Signature must change when posts_out path changes"
+
+  def test_compute_nav_signature_includes_sort_index_and_posts_label(self):
+    from app.manifest import compute_nav_signature
+
+    nav_a = [(Path("index.html"), "Home", Path("index.md"), "page", 1)]
+    nav_b = [(Path("index.html"), "Home", Path("index.md"), "page", 2)]
+    assert compute_nav_signature(nav_a) != compute_nav_signature(nav_b)
+
+    posts_out = Path("posts/index.html")
+    assert compute_nav_signature(nav_a, posts_out=posts_out, posts_label="Blog") != (
+      compute_nav_signature(nav_a, posts_out=posts_out, posts_label="Journal")
+    )
 
 
 class TestInitScaffold:
@@ -1714,6 +2022,22 @@ class TestLoadSiteConfig:
     result = hanma.load_site_config(cfg)
     assert result == {}
 
+  def test_coerces_string_booleans(self, tmp_path):
+    cfg = tmp_path / "hanma.yml"
+    cfg.write_text('serve: "false"\nwatch: "no"\nsanitize: "true"\n', encoding="utf-8")
+    loaded = hanma.load_site_config(cfg)
+    assert loaded["serve"] is False
+    assert loaded["watch"] is False
+    assert loaded["sanitize"] is True
+
+  def test_invalid_sidebar_side_falls_back_to_right(self, capsys):
+    settings = _get_effective_settings(
+      _create_parser().parse_args([]),
+      {"sidebar_side": "upside_down"},
+    )
+    assert settings["sidebar_side"] == "right"
+    assert "Warning: invalid sidebar_side" in capsys.readouterr().err
+
 
 # ===========================================================================
 # 32. save_build_manifest OSError warning
@@ -1822,6 +2146,17 @@ class TestGenerateDefaultConfig:
     dest = fake_parent / "config.yml"
     result = run_hanma("--generate-default-config", str(dest), expect_ok=False)
     assert result.returncode != 0
+
+  def test_refuses_overwrite_without_force(self, tmp_path):
+    cfg_dest = tmp_path / "custom-defaults.yml"
+    cfg_dest.write_text("name: Existing\n", encoding="utf-8")
+    res_no_force = run_hanma("--generate-default-config", str(cfg_dest), expect_ok=False)
+    assert res_no_force.returncode != 0
+    assert "already exists" in res_no_force.stderr or "already exists" in res_no_force.stdout
+
+    res_force = run_hanma("--generate-default-config", str(cfg_dest), "--force")
+    assert res_force.returncode == 0
+    assert "nh3" in cfg_dest.read_text(encoding="utf-8")
 
 
 # ===========================================================================

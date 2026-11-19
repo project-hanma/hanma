@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.build import _run_build
-from app.config import load_site_config
+from app.config import load_site_config, validate_base_url
 from app.convert import convert_md_to_html
 from app.scaffold import init_scaffold
 from app.theme import ThemeError, _load_theme_impl, copy_theme_assets
@@ -134,7 +134,7 @@ Examples:
   parser.add_argument(
     "--sanitize",
     action="store_true",
-    help="Sanitize the generated HTML using 'bleach' if available",
+    help="Sanitize the generated HTML using 'nh3' if available",
   )
   parser.add_argument(
     "--config",
@@ -186,15 +186,18 @@ def _init_scaffold_cmd(force: bool) -> None:
     sys.exit(str(exc))
 
 
-def _generate_default_config_cmd(target: str | bool) -> None:
+def _generate_default_config_cmd(target: str | bool, force: bool = False) -> None:
   """Generate a default configuration file and exit."""
   if isinstance(target, str):
     out_path = Path(target).resolve()
   else:
     out_path = _CONF_DIR / "hanma-defaults.yml"
 
+  if (out_path.exists() or out_path.is_symlink()) and not force:
+    sys.exit(f"Error: '{out_path}' already exists. Re-run with --force to overwrite.")
+
   from app.config import DEFAULT_CONFIG_CONTENT
-  
+
   try:
     atomic_write_text(out_path, DEFAULT_CONFIG_CONTENT, encoding="utf-8")
     print(f"  [create] {out_path.name}")
@@ -267,7 +270,7 @@ def main() -> None:
     return
 
   if args.generate_default_config is not None:
-    _generate_default_config_cmd(args.generate_default_config)
+    _generate_default_config_cmd(args.generate_default_config, force=args.force)
     return
 
   root, target = _resolve_paths(args.path)
@@ -288,10 +291,15 @@ def main() -> None:
 
 def _get_effective_settings(args: argparse.Namespace, site_config: dict) -> dict:
   """Merge CLI args with config and return effective settings."""
-  settings = {}
+  settings: dict = {}
   settings["site_name"]   = args.name     if args.name     is not None else site_config.get("name",   "Blog")
   settings["theme_name"]  = args.theme    if args.theme    is not None else site_config.get("theme",  "default")
-  settings["base_url"]    = args.base_url if args.base_url is not None else site_config.get("base_url", "")
+  raw_base_url = args.base_url if args.base_url is not None else site_config.get("base_url", "")
+  try:
+    settings["base_url"] = validate_base_url(raw_base_url)
+  except ValueError as exc:
+    print(f"Error: {exc}", file=sys.stderr)
+    sys.exit(1)
   settings["output_arg"]  = args.output   if args.output   is not None else site_config.get("output", None)
   settings["posts_label"] = str(site_config.get("posts_label", "Blog"))
   settings["effective_timezone"] = site_config.get("timezone",    None)
@@ -300,6 +308,13 @@ def _get_effective_settings(args: argparse.Namespace, site_config: dict) -> dict
     print(f"Warning: invalid sidebar_side '{raw_side}' in config — defaulting to 'right'.", file=sys.stderr)
     raw_side = "right"
   settings["sidebar_side"] = raw_side
+  settings["cli_overrides"] = {
+    "name": args.name is not None,
+    "base_url": args.base_url is not None,
+    "theme": args.theme is not None,
+    "incremental": bool(args.incremental),
+    "sanitize": bool(args.sanitize),
+  }
 
   _apply_runtime_settings(settings, args, site_config)
 
@@ -355,7 +370,7 @@ def _run_single_file_build(target: Path, settings: dict, dry_run: bool) -> None:
     print(f"Error: {exc}")
     sys.exit(1)
   
-  out_html = settings["output_dir"] / target.name.replace(target.suffix, ".html")
+  out_html = settings["output_dir"] / target.with_suffix(".html").name
   if dry_run:
     print(f"  [dry-run] {target.name}  →  {out_html}")
     return
@@ -414,6 +429,7 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
       "timezone": settings["effective_timezone"],
       "search_enabled": settings["effective_search"],
       "sidebar_side": settings["sidebar_side"],
+      "cli_overrides": settings.get("cli_overrides"),
     }
     if settings["effective_serve"]:
       watch_thread = threading.Thread(
@@ -434,7 +450,9 @@ def _run_full_site_build(root: Path, config_path: Path, settings: dict, dry_run:
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
-  """Custom HTTP handler that validates paths and restricts logging."""
+  """Custom HTTP handler that validates paths, blocks dotfiles, and adds security headers."""
+  timeout = 10
+
   def __init__(self, *a, **kw):
     # Retrieve directory from the server object (which is passed as the third positional argument)
     # to work around HTTPServer instantiating the handler without passing a directory kwarg.
@@ -442,23 +460,34 @@ class QuietHandler(SimpleHTTPRequestHandler):
       kw['directory'] = a[2].directory
     super().__init__(*a, **kw)
 
+  def version_string(self) -> str:
+    """Suppress Python/SimpleHTTP version disclosure in the Server header."""
+    return "hanma"
+
+  def end_headers(self) -> None:
+    """Attach baseline HTTP security headers before finalizing response headers."""
+    self.send_header("X-Content-Type-Options", "nosniff")
+    self.send_header("X-Frame-Options", "SAMEORIGIN")
+    self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+    super().end_headers()
+
   def list_directory(self, path):
     """Override list_directory to block directory indexing and return a clean 404."""
     self.send_error(404, "File not found")
     return None
 
   def translate_path(self, path):
-    """Map URL to physical path and ensure it stays within serve_dir."""
+    """Map URL to physical path and ensure it stays within serve_dir without dotfiles."""
     # Get the default translation
     fs_path = super().translate_path(path)
-    
+
     # Resolve to absolute physical path (follows symlinks)
     try:
       resolved = Path(fs_path).resolve()
     except Exception:
       # If resolution fails, return an empty string to trigger 404
       return ""
-        
+
     # Ensure the resolved path is strictly within the serving directory.
     # self.server.directory is set by SimpleHTTPRequestHandler
     serve_dir = getattr(self.server, "resolved_directory", None)
@@ -468,6 +497,9 @@ class QuietHandler(SimpleHTTPRequestHandler):
         self.server.resolved_directory = serve_dir  # type: ignore[attr-defined]
     if not resolved.is_relative_to(serve_dir):
       # Attempted directory traversal via symlink or other means
+      return "/dev/null/non-existent"
+    if any(part.startswith(".") for part in resolved.relative_to(serve_dir).parts):
+      # Block hidden files/dirs such as .hanma_manifest.json or .tmp_* temp files
       return "/dev/null/non-existent"
 
     return str(resolved)
@@ -511,3 +543,5 @@ def _serve(serve_dir: Path, port: int, host: str = "127.0.0.1") -> None:
     server.serve_forever()
   except KeyboardInterrupt:
     print("\nServer stopped.")
+  finally:
+    server.server_close()
